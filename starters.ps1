@@ -261,29 +261,69 @@ function Set-FullDemoPage {
 
     $heroRef = if ($isTypeScript) { 'useRef<HTMLElement>(null)' } else { 'useRef(null)' }
     $titleRef = if ($isTypeScript) { 'useRef<HTMLHeadingElement>(null)' } else { 'useRef(null)' }
-    $techPillProps = if ($isTypeScript) { ': { name: string; detail: string }' } else { '' }
+    $techPillProps = if ($isTypeScript) { ': { name: string; detail: string; href: string; Icon: IconType }' } else { '' }
+    $techPillTypeImport = if ($isTypeScript) { "import type { IconType } from 'react-icons'`n" } else { '' }
     $canvasRef = if ($isTypeScript) { 'useRef<HTMLCanvasElement>(null)' } else { 'useRef(null)' }
     $pointerEventType = if ($isTypeScript) { ': PointerEvent' } else { '' }
 
     @"
 import Hero from './components/Hero.$componentExtension'
+import './styles/app.css'
 import './styles/demo.css'
 
 export default function App() {
-    return <Hero />
+    return (
+        <main className="app-shell">
+            <Hero />
+        </main>
+    )
 }
 "@ | Set-Content -LiteralPath $appPath -Encoding utf8
 
     @"
 import { useLayoutEffect, useRef } from 'react'
 import gsap from 'gsap'
+import { SiGreensock, SiJavascript, SiReact, SiTailwindcss, SiThreedotjs, SiVite } from 'react-icons/si'
 import TechPill from './TechPill.$componentExtension'
 import ThreeScene from './three/ThreeScene.$componentExtension'
 
 const technologies = [
-    ['Tailwind CSS', 'Responsive layout'],
-    ['GSAP', 'Entrance motion'],
-    ['Three.js', 'Pointer controls'],
+    {
+        name: 'Vite',
+        detail: 'Build tooling',
+        href: 'https://vite.dev/',
+        Icon: SiVite,
+    },
+    {
+        name: 'React',
+        detail: 'UI library',
+        href: 'https://react.dev/',
+        Icon: SiReact,
+    },
+    {
+        name: 'JavaScript',
+        detail: 'Language',
+        href: 'https://developer.mozilla.org/docs/Web/JavaScript',
+        Icon: SiJavascript,
+    },
+    {
+        name: 'Tailwind CSS',
+        detail: 'Responsive layout',
+        href: 'https://tailwindcss.com/',
+        Icon: SiTailwindcss,
+    },
+    {
+        name: 'GSAP',
+        detail: 'Entrance motion',
+        href: 'https://gsap.com/',
+        Icon: SiGreensock,
+    },
+    {
+        name: 'Three.js',
+        detail: 'Pointer controls',
+        href: 'https://threejs.org/',
+        Icon: SiThreedotjs,
+    },
 ]
 
 export default function Hero() {
@@ -312,7 +352,7 @@ export default function Hero() {
     }, [])
 
     return (
-        <main className="demo-shell px-4 py-10 text-white tab:px-8">
+        <section className="demo-shell px-4 py-10 text-white tab:px-8">
             <header ref={heroRef} className="demo-grid mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 lap:grid-cols-[1fr_0.9fr]">
                 <div>
                     <p data-demo-reveal className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-blue-300">
@@ -324,27 +364,34 @@ export default function Hero() {
                     <p data-demo-reveal className="mt-5 max-w-lg text-base leading-7 text-neutral-300 tab:text-lg">
                         A removable preview for React, Tailwind CSS, GSAP, and a mouse-controlled Three.js model.
                     </p>
-                    <div data-demo-reveal className="mt-8 grid gap-3 tab:grid-cols-3">
-                        {technologies.map(([name, detail]) => (
-                            <TechPill key={name} name={name} detail={detail} />
+                    <div data-demo-reveal className="mt-8 grid gap-3 tab:grid-cols-2 lap:grid-cols-3">
+                        {technologies.map((technology) => (
+                            <TechPill key={technology.name} {...technology} />
                         ))}
                     </div>
                 </div>
 
                 <ThreeScene />
             </header>
-        </main>
+        </section>
     )
 }
 "@ | Set-Content -LiteralPath (Join-Path $componentPath "Hero.$componentExtension") -Encoding utf8
 
 @"
-export default function TechPill({ name, detail }$techPillProps) {
+$techPillTypeImport
+export default function TechPill({ name, detail, href, Icon }$techPillProps) {
     return (
-        <article className="demo-tech-pill border border-white/10 bg-white/5 p-4">
-            <p className="font-semibold text-white">{name}</p>
-            <p className="mt-1 text-sm text-neutral-400">{detail}</p>
-        </article>
+        <a
+            href={href}
+            className="demo-tech-pill flex cursor-pointer items-start gap-3 border border-white/10 bg-white/5 p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300"
+        >
+            <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-blue-300" />
+            <span>
+                <span className="block font-semibold text-white">{name}</span>
+                <span className="mt-1 block text-sm text-neutral-400">{detail}</span>
+            </span>
+        </a>
     )
 }
 "@ | Set-Content -LiteralPath (Join-Path $componentPath "TechPill.$componentExtension") -Encoding utf8
@@ -447,6 +494,13 @@ export default function ThreeScene() {
     )
 }
 "@ | Set-Content -LiteralPath (Join-Path $threeComponentPath "ThreeScene.$componentExtension") -Encoding utf8
+
+@'
+#root,
+.app-shell {
+    min-height: 100vh;
+}
+'@ | Set-Content -LiteralPath (Join-Path $stylesPath 'app.css') -Encoding utf8
 
 @'
 .demo-shell {
@@ -1099,7 +1153,7 @@ function full-app {
     try {
         Invoke-Npm install
         Initialize-ViteTailwind $path
-        Invoke-Npm install gsap three
+        Invoke-Npm install gsap three react-icons
         if (Test-Path -LiteralPath (Join-Path $path 'src/App.tsx')) {
             Invoke-NpmDevInstall @types/three
         }
