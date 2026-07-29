@@ -1,11 +1,12 @@
-# Minimal Frontend Starters
+# SLMN Frontend Starters
 
-PowerShell commands for creating clean frontend projects on your Desktop. The template starters open their completed project in VS Code; the interactive Vite and Next.js commands hand control to their official setup prompts.
+PowerShell commands for creating clean frontend projects on your Desktop. `slmn-app` is the flagship starter: a complete, removable React technology demo. The other commands are focused alternatives for smaller starting points.
 
 ## What Is Included
 
 | Command | Stack | Initial project |
 | --- | --- | --- |
+| `slmn-app "my-app"` | Vite, React, Tailwind CSS v4, GSAP, Three.js, React Icons | **Flagship:** interactive React selection, then a removable SLMN technology demo |
 | `vanilla-project "my-site"` | HTML, CSS, JavaScript | A dark page with one centered heading and linked `js/main.js` |
 | `tailwind-project "my-site"` | Vite, Tailwind CSS v4 | Dark static HTML with a centered heading and custom Tailwind screens |
 | `gsap-project "my-site"` | HTML, CSS, JavaScript, GSAP CDN | One heading with a small entrance animation |
@@ -13,7 +14,7 @@ PowerShell commands for creating clean frontend projects on your Desktop. The te
 | `react-project "my-site"` | Vite, React | A dark page with a minimal `useState` counter |
 | `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | A dark animated React heading and `useState` counter |
 | `vite-app "my-app"` | Vite | Official Vite prompts, then optional Tailwind CSS, GSAP, and Three.js |
-| `full-app "my-demo"` | Vite, React, Tailwind CSS v4, GSAP, Three.js, React Icons | Interactive React Vite selection, then a working full-stack technology demo |
+| `full-app "my-demo"` | Alias for `slmn-app` | Backwards-compatible name for the flagship starter |
 | `next-app "my-next-app"` | Next.js | Official Create Next App prompts, then optional GSAP and Three.js |
 
 Vite-generated projects are cleaned before VS Code opens. They do not keep the default counter, starter icons, `public` folder, `src/assets`, generated README, or the default React lint setup.
@@ -75,8 +76,8 @@ gsap-project "gsap-hero"
 tailwind-gsap-project "animated-site"
 react-project "portfolio"
 react-tailwind-gsap-project "motion-app"
+slmn-app "my-app"
 vite-app "my-app"
-full-app "my-demo"
 next-app "my-next-app"
 ```
 
@@ -96,9 +97,9 @@ Feature questions use uppercase `[Y/N]` prompts. Press `Y` or `N` once; no Enter
 
 For `vite-app`, choose the framework and variant in Vite's normal prompts. The launcher uses Vite's `--no-immediate` option, then installs your selected features and starts the server after setup. For `next-app`, answer Create Next App's normal prompts; its package installation completes before the two feature questions appear.
 
-`full-app` uses Vite's normal framework and variant prompts, then automatically installs Tailwind CSS, GSAP, Three.js, and React Icons. Choose **React** and either **JavaScript** or **TypeScript**. It replaces Vite's default React page with a dark technology preview: Tailwind controls the responsive layout, GSAP animates the header, and Three.js renders a mouse-controlled WebGL model. It then opens VS Code and starts the development server.
+`slmn-app` is the primary starter. It uses Vite's normal framework and variant prompts, then automatically installs Tailwind CSS, GSAP, Three.js, and React Icons. Choose **React** and either **JavaScript** or **TypeScript**. It replaces Vite's default React page with a dark SLMN technology preview: Tailwind controls the responsive layout, GSAP animates the header, and Three.js renders a mouse-controlled WebGL model. It then opens VS Code and starts the development server. `full-app` remains available as an alias.
 
-The preview is split into removable files: `src/App.*` is a small composition root, `src/components/Hero.*` owns the header and GSAP animation, `src/components/TechPill.*` owns the technology links and brand icons, `src/components/three/ThreeScene.*` owns the pointer-controlled model, and `src/styles/demo.css` contains preview-specific styles. Vite, React, JavaScript, Tailwind CSS, GSAP, and Three.js cards link to their official sites or primary documentation.
+The preview is split into removable files: `src/App.*` is a small composition root, `src/components/Hero.*` owns the header and GSAP animation, `src/components/TechPill.*` owns the technology links and brand icons, `src/components/three/ThreeScene.*` owns the pointer-controlled model, and `src/styles/demo.css` contains preview-specific styles. Vite, React, JavaScript, Tailwind CSS, GSAP, and Three.js cards link to their official sites or primary documentation in a new browser tab.
 
 To replace the preview with your application:
 

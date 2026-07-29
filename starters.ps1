@@ -1,8 +1,11 @@
 # ============================================
-# MINIMAL FRONTEND STARTERS
+# SLMN FRONTEND STARTERS
 # ============================================
 # Usage:
 #   . .\starters.ps1
+#
+#   slmn-app "my-app"
+#
 #   vanilla-project "my-site"
 #   tailwind-project "tailwind-demo"
 #   gsap-project "gsap-hero"
@@ -10,7 +13,6 @@
 #   react-project "portfolio"
 #   react-tailwind-gsap-project "motion-app"
 #   vite-app "my-app"
-#   full-app "my-demo"
 #   next-app "my-next-app"
 # ============================================
 
@@ -369,6 +371,9 @@ export default function Hero() {
                             <TechPill key={technology.name} {...technology} />
                         ))}
                     </div>
+                    <p data-demo-reveal className="mt-3 text-sm text-neutral-400">
+                        Each card opens its official site in a new tab.
+                    </p>
                 </div>
 
                 <ThreeScene />
@@ -384,6 +389,8 @@ export default function TechPill({ name, detail, href, Icon }$techPillProps) {
     return (
         <a
             href={href}
+            target="_blank"
+            rel="noreferrer"
             className="demo-tech-pill flex cursor-pointer items-start gap-3 border border-white/10 bg-white/5 p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300"
         >
             <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-blue-300" />
@@ -1127,9 +1134,9 @@ function vite-app {
 }
 
 # -----------------------------
-# 8. FULL REACT DEMO
+# 8. SLMN APP (FLAGSHIP DEMO)
 # -----------------------------
-function full-app {
+function slmn-app {
     param([Parameter(Mandatory)][string]$name)
 
     $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
@@ -1139,7 +1146,7 @@ function full-app {
     }
 
     Set-Location $desktop
-    Write-Host 'Choose React and either JavaScript or TypeScript. This command installs Tailwind CSS, GSAP, and Three.js, then replaces the default Vite page with a working demo.' -ForegroundColor Cyan
+    Write-Host 'Choose React and either JavaScript or TypeScript. SLMN App installs Tailwind CSS, GSAP, Three.js, and React Icons, then replaces the default Vite page with a working demo.' -ForegroundColor Cyan
     npm create vite@latest $name -- --no-immediate
     if ($LASTEXITCODE -ne 0) {
         throw "Vite setup failed for '$name'."
@@ -1165,6 +1172,12 @@ function full-app {
     Set-Location $path
     Open-ProjectEditor $path
     Invoke-Npm run dev
+}
+
+function full-app {
+    param([Parameter(Mandatory)][string]$name)
+
+    slmn-app $name
 }
 
 # -----------------------------
