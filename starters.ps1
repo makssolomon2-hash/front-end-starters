@@ -10,6 +10,7 @@
 #   react-project "portfolio"
 #   react-tailwind-gsap-project "motion-app"
 #   vite-app "my-app"
+#   full-app "my-demo"
 #   next-app "my-next-app"
 # ============================================
 
@@ -125,15 +126,21 @@ function Confirm-Feature {
     param([string]$Prompt)
 
     while ($true) {
-        $answer = Read-Host "$Prompt [Y/n]"
+        Write-Host "$Prompt [Y/N] " -NoNewline -ForegroundColor Cyan
+        $key = [Console]::ReadKey($true)
 
-        switch ($answer.Trim().ToLowerInvariant()) {
-            '' { return $false }
-            'y' { return $true }
-            'yes' { return $true }
-            'n' { return $false }
-            'no' { return $false }
-            default { Write-Host 'Enter Y for Yes or N for No.' -ForegroundColor Yellow }
+        switch ($key.Key) {
+            'Y' {
+                Write-Host 'Y' -ForegroundColor Green
+                return $true
+            }
+            'N' {
+                Write-Host 'N' -ForegroundColor DarkGray
+                return $false
+            }
+            default {
+                Write-Host "`nPress Y for Yes or N for No." -ForegroundColor Yellow
+            }
         }
     }
 }
@@ -229,6 +236,297 @@ export default defineConfig({
     if ($stylesheet -notmatch '@import\s+["'']tailwindcss["'']') {
         Set-Content -LiteralPath $stylesheetPath -Value "@import `"tailwindcss`";`n`n$stylesheet" -Encoding utf8
     }
+}
+
+function Set-FullDemoPage {
+    param(
+        [string]$Path,
+        [string]$Name
+    )
+
+    $appPath = @(
+        (Join-Path $Path 'src/App.jsx'),
+        (Join-Path $Path 'src/App.tsx')
+    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $appPath) {
+        throw "Full starter requires a React Vite project. Choose React in Vite's framework prompt."
+    }
+
+    $componentExtension = if ($appPath.EndsWith('.tsx')) { 'tsx' } else { 'jsx' }
+    $isTypeScript = $componentExtension -eq 'tsx'
+    $componentPath = Join-Path $Path 'src/components'
+    $threeComponentPath = Join-Path $componentPath 'three'
+    $stylesPath = Join-Path $Path 'src/styles'
+    New-Item -ItemType Directory -Path $componentPath, $threeComponentPath, $stylesPath -Force | Out-Null
+
+    $heroRef = if ($isTypeScript) { 'useRef<HTMLElement>(null)' } else { 'useRef(null)' }
+    $titleRef = if ($isTypeScript) { 'useRef<HTMLHeadingElement>(null)' } else { 'useRef(null)' }
+    $techPillProps = if ($isTypeScript) { ': { name: string; detail: string }' } else { '' }
+    $canvasRef = if ($isTypeScript) { 'useRef<HTMLCanvasElement>(null)' } else { 'useRef(null)' }
+    $pointerEventType = if ($isTypeScript) { ': PointerEvent' } else { '' }
+
+    @"
+import Hero from './components/Hero.$componentExtension'
+import './styles/demo.css'
+
+export default function App() {
+    return <Hero />
+}
+"@ | Set-Content -LiteralPath $appPath -Encoding utf8
+
+    @"
+import { useLayoutEffect, useRef } from 'react'
+import gsap from 'gsap'
+import TechPill from './TechPill.$componentExtension'
+import ThreeScene from './three/ThreeScene.$componentExtension'
+
+const technologies = [
+    ['Tailwind CSS', 'Responsive layout'],
+    ['GSAP', 'Entrance motion'],
+    ['Three.js', 'Pointer controls'],
+]
+
+export default function Hero() {
+    const heroRef = $heroRef
+    const titleRef = $titleRef
+
+    useLayoutEffect(() => {
+        const context = gsap.context(() => {
+            gsap.from(titleRef.current, {
+                y: 28,
+                opacity: 0,
+                duration: 0.8,
+                ease: 'power3.out',
+            })
+            gsap.from('[data-demo-reveal]', {
+                y: 16,
+                opacity: 0,
+                duration: 0.55,
+                stagger: 0.1,
+                delay: 0.2,
+                ease: 'power2.out',
+            })
+        }, heroRef)
+
+        return () => context.revert()
+    }, [])
+
+    return (
+        <main className="demo-shell px-4 py-10 text-white tab:px-8">
+            <header ref={heroRef} className="demo-grid mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 lap:grid-cols-[1fr_0.9fr]">
+                <div>
+                    <p data-demo-reveal className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-blue-300">
+                        SLMN React Starter
+                    </p>
+                    <h1 ref={titleRef} className="max-w-xl text-4xl font-semibold leading-tight tab:text-5xl lap:text-6xl fhd:text-7xl">
+                        Build Your Modern App.
+                    </h1>
+                    <p data-demo-reveal className="mt-5 max-w-lg text-base leading-7 text-neutral-300 tab:text-lg">
+                        A removable preview for React, Tailwind CSS, GSAP, and a mouse-controlled Three.js model.
+                    </p>
+                    <div data-demo-reveal className="mt-8 grid gap-3 tab:grid-cols-3">
+                        {technologies.map(([name, detail]) => (
+                            <TechPill key={name} name={name} detail={detail} />
+                        ))}
+                    </div>
+                </div>
+
+                <ThreeScene />
+            </header>
+        </main>
+    )
+}
+"@ | Set-Content -LiteralPath (Join-Path $componentPath "Hero.$componentExtension") -Encoding utf8
+
+@"
+export default function TechPill({ name, detail }$techPillProps) {
+    return (
+        <article className="demo-tech-pill border border-white/10 bg-white/5 p-4">
+            <p className="font-semibold text-white">{name}</p>
+            <p className="mt-1 text-sm text-neutral-400">{detail}</p>
+        </article>
+    )
+}
+"@ | Set-Content -LiteralPath (Join-Path $componentPath "TechPill.$componentExtension") -Encoding utf8
+
+@"
+import { useEffect, useRef } from 'react'
+import * as THREE from 'three'
+
+export default function ThreeScene() {
+    const canvasRef = $canvasRef
+
+    useEffect(() => {
+        const canvas = canvasRef.current
+        if (!canvas) return undefined
+
+        const scene = new THREE.Scene()
+        const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
+        camera.position.set(0, 0, 4)
+
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true })
+        const geometry = new THREE.IcosahedronGeometry(1, 2)
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x60a5fa,
+            metalness: 0.45,
+            roughness: 0.25,
+        })
+        const mesh = new THREE.Mesh(geometry, material)
+        const wireframe = new THREE.LineSegments(
+            new THREE.WireframeGeometry(geometry),
+            new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28 }),
+        )
+        scene.add(mesh, wireframe)
+
+        const keyLight = new THREE.DirectionalLight(0xffffff, 2.5)
+        keyLight.position.set(2, 2, 3)
+        scene.add(keyLight, new THREE.AmbientLight(0x4466aa, 1.5))
+
+        const pointer = { x: 0, y: 0 }
+        const resize = () => {
+            const width = Math.max(canvas.clientWidth, 1)
+            const height = Math.max(canvas.clientHeight, 1)
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+            renderer.setSize(width, height, false)
+            camera.aspect = width / height
+            camera.updateProjectionMatrix()
+        }
+        const handlePointerMove = (event$pointerEventType) => {
+            const bounds = canvas.getBoundingClientRect()
+            pointer.x = ((event.clientX - bounds.left) / bounds.width - 0.5) * 1.1
+            pointer.y = ((event.clientY - bounds.top) / bounds.height - 0.5) * 0.8
+        }
+        const resetPointer = () => {
+            pointer.x = 0
+            pointer.y = 0
+        }
+
+        const resizeObserver = new ResizeObserver(resize)
+        resizeObserver.observe(canvas)
+        canvas.addEventListener('pointermove', handlePointerMove)
+        canvas.addEventListener('pointerleave', resetPointer)
+
+        let frameId = 0
+        const render = () => {
+            mesh.rotation.y += (pointer.x - mesh.rotation.y) * 0.04
+            mesh.rotation.x += (-pointer.y - mesh.rotation.x) * 0.04
+            mesh.rotation.z += 0.002
+            wireframe.rotation.copy(mesh.rotation)
+            renderer.render(scene, camera)
+            frameId = requestAnimationFrame(render)
+        }
+
+        resize()
+        render()
+
+        return () => {
+            cancelAnimationFrame(frameId)
+            resizeObserver.disconnect()
+            canvas.removeEventListener('pointermove', handlePointerMove)
+            canvas.removeEventListener('pointerleave', resetPointer)
+            geometry.dispose()
+            material.dispose()
+            wireframe.geometry.dispose()
+            wireframe.material.dispose()
+            renderer.dispose()
+        }
+    }, [])
+
+    return (
+        <div data-demo-reveal className="demo-scene relative overflow-hidden border border-white/10 bg-neutral-800 shadow-2xl shadow-black/25">
+            <canvas
+                ref={canvasRef}
+                className="demo-canvas h-80 w-full tab:h-96"
+                aria-label="Interactive 3D model. Move your pointer over the canvas to rotate it."
+            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between border-t border-white/10 bg-neutral-900/80 px-5 py-4 backdrop-blur">
+                <span className="text-sm font-medium text-white">Move pointer to rotate</span>
+                <span className="text-xs uppercase tracking-[0.16em] text-blue-300">WebGL active</span>
+            </div>
+        </div>
+    )
+}
+"@ | Set-Content -LiteralPath (Join-Path $threeComponentPath "ThreeScene.$componentExtension") -Encoding utf8
+
+@'
+.demo-shell {
+    min-height: 100vh;
+    background-color: #171717;
+    background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+}
+
+.demo-grid {
+    position: relative;
+}
+
+.demo-tech-pill {
+    transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.demo-tech-pill:hover {
+    border-color: rgb(147 197 253 / 0.65);
+    background: rgb(255 255 255 / 0.09);
+    transform: translateY(-2px);
+}
+
+.demo-scene {
+    isolation: isolate;
+    background-color: #202020;
+}
+
+.demo-canvas {
+    display: block;
+    cursor: grab;
+    touch-action: none;
+}
+
+.demo-canvas:active {
+    cursor: grabbing;
+}
+'@ | Set-Content -LiteralPath (Join-Path $stylesPath 'demo.css') -Encoding utf8
+
+    @'
+@import "tailwindcss";
+
+@theme {
+    --breakpoint-*: initial;
+    --breakpoint-tab: 48rem;
+    --breakpoint-lap: 64rem;
+    --breakpoint-fhd: 120rem;
+    --breakpoint-2k: 160rem;
+    --breakpoint-4k: 240rem;
+}
+
+@layer base {
+    html {
+        @apply bg-neutral-900;
+    }
+
+    body {
+        @apply min-h-screen bg-neutral-900 text-white antialiased;
+    }
+}
+'@ | Set-Content -LiteralPath (Join-Path $Path 'src/index.css') -Encoding utf8
+
+    @"
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$Name</title>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/src/main$([System.IO.Path]::GetExtension($appPath))"></script>
+</body>
+</html>
+"@ | Set-Content -LiteralPath (Join-Path $Path 'index.html') -Encoding utf8
+
+    Remove-Item -LiteralPath (Join-Path $Path 'src/assets') -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Path 'src/App.css') -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Path 'public') -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 function Complete-InteractiveProject {
@@ -775,7 +1073,48 @@ function vite-app {
 }
 
 # -----------------------------
-# 8. INTERACTIVE NEXT.JS
+# 8. FULL REACT DEMO
+# -----------------------------
+function full-app {
+    param([Parameter(Mandatory)][string]$name)
+
+    $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
+    $path = Join-Path $desktop $name
+    if (Test-Path -LiteralPath $path) {
+        throw "Project already exists: $path"
+    }
+
+    Set-Location $desktop
+    Write-Host 'Choose React and either JavaScript or TypeScript. This command installs Tailwind CSS, GSAP, and Three.js, then replaces the default Vite page with a working demo.' -ForegroundColor Cyan
+    npm create vite@latest $name -- --no-immediate
+    if ($LASTEXITCODE -ne 0) {
+        throw "Vite setup failed for '$name'."
+    }
+
+    if (-not (Test-ProjectDependency -Path $path -Name 'react')) {
+        throw "Full starter requires React. Create the project again and choose React in Vite's framework prompt."
+    }
+
+    Push-Location $path
+    try {
+        Invoke-Npm install
+        Initialize-ViteTailwind $path
+        Invoke-Npm install gsap three
+        if (Test-Path -LiteralPath (Join-Path $path 'src/App.tsx')) {
+            Invoke-NpmDevInstall @types/three
+        }
+        Set-FullDemoPage -Path $path -Name $name
+    } finally {
+        Pop-Location
+    }
+
+    Set-Location $path
+    Open-ProjectEditor $path
+    Invoke-Npm run dev
+}
+
+# -----------------------------
+# 9. INTERACTIVE NEXT.JS
 # -----------------------------
 function next-app {
     param([Parameter(Mandatory)][string]$name)

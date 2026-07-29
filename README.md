@@ -13,6 +13,7 @@ PowerShell commands for creating clean frontend projects on your Desktop. The te
 | `react-project "my-site"` | Vite, React | A dark page with a minimal `useState` counter |
 | `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | A dark animated React heading and `useState` counter |
 | `vite-app "my-app"` | Vite | Official Vite prompts, then optional Tailwind CSS, GSAP, and Three.js |
+| `full-app "my-demo"` | Vite, React, Tailwind CSS v4, GSAP, Three.js | Interactive React Vite selection, then a working full-stack technology demo |
 | `next-app "my-next-app"` | Next.js | Official Create Next App prompts, then optional GSAP and Three.js |
 
 Vite-generated projects are cleaned before VS Code opens. They do not keep the default counter, starter icons, `public` folder, `src/assets`, generated README, or the default React lint setup.
@@ -75,6 +76,7 @@ tailwind-gsap-project "animated-site"
 react-project "portfolio"
 react-tailwind-gsap-project "motion-app"
 vite-app "my-app"
+full-app "my-demo"
 next-app "my-next-app"
 ```
 
@@ -90,9 +92,13 @@ The Vanilla starter can be opened directly in a browser or served with your pref
 
 `vite-app` and `next-app` switch to your Desktop and start Vite's or Next.js's normal interactive command. Once the official CLI finishes, `vite-app` asks whether to add Tailwind CSS, GSAP, and Three.js; it configures Tailwind when selected. Create Next App already asks about Tailwind during its own setup, so `next-app` only asks whether to add GSAP and Three.js afterward. Each command installs only the features you select, opens the finished project in VS Code, and starts `npm run dev` in the current terminal. Git behavior follows the official CLI you choose.
 
-Feature questions use standard prompts: enter `Y` for Yes or `N` for No. Press Enter for No.
+Feature questions use uppercase `[Y/N]` prompts. Press `Y` or `N` once; no Enter key is needed.
 
 For `vite-app`, choose the framework and variant in Vite's normal prompts. The launcher uses Vite's `--no-immediate` option, then installs your selected features and starts the server after setup. For `next-app`, answer Create Next App's normal prompts; its package installation completes before the two feature questions appear.
+
+`full-app` uses Vite's normal framework and variant prompts, then automatically installs Tailwind CSS, GSAP, and Three.js. Choose **React** and either **JavaScript** or **TypeScript**. It replaces Vite's default React page with a dark technology preview: Tailwind controls the responsive layout, GSAP animates the header, and Three.js renders a mouse-controlled WebGL model. It then opens VS Code and starts the development server.
+
+The preview is split into removable files: `src/App.*` is a small composition root, `src/components/Hero.*` owns the header and GSAP animation, `src/components/TechPill.*` owns the technology cards, `src/components/three/ThreeScene.*` owns the pointer-controlled model, and `src/styles/demo.css` contains preview-specific styles. Replace the `Hero` render in `App`, then delete those demo files to begin your own application.
 
 ## Responsive Screens
 
@@ -117,6 +123,7 @@ The goal is a clean place to begin, not a sample app:
 - Tailwind and Tailwind + GSAP keep their `<main>` and `<h1>` directly in `index.html`; `src/main.js` only loads CSS and, when applicable, runs GSAP.
 - React uses only `src/main.jsx`, `src/App.jsx`, and `src/index.css` in addition to Vite and npm files. It starts with a small `useState` count button.
 - React + Tailwind + GSAP combines the custom screens, title entrance animation, and the same small React counter.
+- The full React demo keeps `App` intentionally small and places the Three.js preview in `src/components/three/ThreeScene.*`; moving the pointer over its canvas rotates the model.
 - JavaScript and React entries log `Page loaded` in the browser console.
 
 ## Troubleshooting
