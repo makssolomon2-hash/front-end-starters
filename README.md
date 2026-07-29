@@ -13,7 +13,7 @@ PowerShell commands for creating clean frontend projects on your Desktop. The te
 | `react-project "my-site"` | Vite, React | A dark page with a minimal `useState` counter |
 | `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | A dark animated React heading and `useState` counter |
 | `vite-app "my-app"` | Vite | Official Vite prompts, then optional Tailwind CSS, GSAP, and Three.js |
-| `next-app "my-next-app"` | Next.js | Official Create Next App prompts, then optional Tailwind CSS, GSAP, and Three.js |
+| `next-app "my-next-app"` | Next.js | Official Create Next App prompts, then optional GSAP and Three.js |
 
 Vite-generated projects are cleaned before VS Code opens. They do not keep the default counter, starter icons, `public` folder, `src/assets`, generated README, or the default React lint setup.
 
@@ -88,9 +88,11 @@ npm run dev
 
 The Vanilla starter can be opened directly in a browser or served with your preferred local server. The GSAP starter loads GSAP from a CDN, so its first animation requires an internet connection.
 
-`vite-app` and `next-app` switch to your Desktop and start Vite's or Next.js's normal interactive command. Once the official CLI finishes, each command asks whether to add Tailwind CSS, GSAP, and Three.js. It installs only the features you select, configures Tailwind when selected, opens the finished project in VS Code, and starts `npm run dev` in the current terminal. Git behavior follows the official CLI you choose.
+`vite-app` and `next-app` switch to your Desktop and start Vite's or Next.js's normal interactive command. Once the official CLI finishes, `vite-app` asks whether to add Tailwind CSS, GSAP, and Three.js; it configures Tailwind when selected. Create Next App already asks about Tailwind during its own setup, so `next-app` only asks whether to add GSAP and Three.js afterward. Each command installs only the features you select, opens the finished project in VS Code, and starts `npm run dev` in the current terminal. Git behavior follows the official CLI you choose.
 
-For `vite-app`, choose **No** when Vite asks whether to install and start the project. The launcher then installs your selected features and starts the server after setup. For `next-app`, answer Create Next App's normal prompts; its package installation completes before the three feature questions appear.
+Feature questions use standard prompts: enter `Y` for Yes or `N` for No. Press Enter for No.
+
+For `vite-app`, choose the framework and variant in Vite's normal prompts. The launcher uses Vite's `--no-immediate` option, then installs your selected features and starts the server after setup. For `next-app`, answer Create Next App's normal prompts; its package installation completes before the two feature questions appear.
 
 ## Responsive Screens
 

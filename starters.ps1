@@ -124,8 +124,18 @@ function Open-ProjectEditor {
 function Confirm-Feature {
     param([string]$Prompt)
 
-    $answer = Read-Host "$Prompt [y/N]"
-    return $answer -match '^(?i:y|yes)$'
+    while ($true) {
+        $answer = Read-Host "$Prompt [Y/n]"
+
+        switch ($answer.Trim().ToLowerInvariant()) {
+            '' { return $false }
+            'y' { return $true }
+            'yes' { return $true }
+            'n' { return $false }
+            'no' { return $false }
+            default { Write-Host 'Enter Y for Yes or N for No.' -ForegroundColor Yellow }
+        }
+    }
 }
 
 function Test-ProjectDependency {
@@ -221,43 +231,6 @@ export default defineConfig({
     }
 }
 
-function Initialize-NextTailwind {
-    param([string]$Path)
-
-    if (Test-ProjectDependency -Path $Path -Name 'tailwindcss') {
-        Write-Host 'Tailwind CSS is already installed.' -ForegroundColor DarkGray
-        return
-    }
-
-    Push-Location $Path
-    try {
-        Invoke-Npm install -D tailwindcss @tailwindcss/postcss
-    } finally {
-        Pop-Location
-    }
-
-    @'
-const config = {
-    plugins: {
-        '@tailwindcss/postcss': {},
-    },
-}
-
-export default config
-'@ | Set-Content -LiteralPath (Join-Path $Path 'postcss.config.mjs') -Encoding utf8
-
-    $globalStylesheet = Get-ChildItem -LiteralPath $Path -Recurse -File -Filter 'globals.css' -ErrorAction SilentlyContinue |
-        Select-Object -First 1 -ExpandProperty FullName
-    if (-not $globalStylesheet) {
-        throw "Tailwind CSS was installed, but a globals.css file was not found in $Path"
-    }
-
-    $stylesheet = Get-Content -LiteralPath $globalStylesheet -Raw
-    if ($stylesheet -notmatch '@import\s+["'']tailwindcss["'']') {
-        Set-Content -LiteralPath $globalStylesheet -Value "@import `"tailwindcss`";`n`n$stylesheet" -Encoding utf8
-    }
-}
-
 function Complete-InteractiveProject {
     param(
         [string]$Path,
@@ -273,12 +246,8 @@ function Complete-InteractiveProject {
         }
     }
 
-    if (Confirm-Feature 'Add Tailwind CSS?') {
-        if ($Stack -eq 'Vite') {
-            Initialize-ViteTailwind $Path
-        } else {
-            Initialize-NextTailwind $Path
-        }
+    if ($Stack -eq 'Vite' -and (Confirm-Feature 'Add Tailwind CSS?')) {
+        Initialize-ViteTailwind $Path
     }
 
     if (Confirm-Feature 'Add GSAP?') {
@@ -333,7 +302,8 @@ function vanilla-project {
 </head>
 <body>
     <main>
-        <h1>$name</h1>
+        <h1>SLMN Vanilla Starter</h1>
+        <h2>$name</h2>
     </main>
     <script src="./js/main.js"></script>
 </body>
@@ -412,7 +382,8 @@ console.log('Page loaded')
 </head>
 <body class="bg-neutral-900 text-white">
     <main class="grid min-h-screen place-items-center px-4">
-        <h1 class="text-3xl font-semibold tab:text-4xl lap:text-5xl fhd:text-6xl 2k:text-7xl 4k:text-8xl">$name</h1>
+        <h1>SLMN Tailwind Starter</h1>
+        <h2 class="text-3xl font-semibold tab:text-4xl lap:text-5xl fhd:text-6xl 2k:text-7xl 4k:text-8xl">$name</h2>
     </main>
     <script type="module" src="/src/main.js"></script>
 </body>
@@ -794,8 +765,8 @@ function vite-app {
     }
 
     Set-Location $desktop
-    Write-Host "Choose your Vite options. At Vite's final 'Install and start now?' prompt, choose No; this command will install your selected features and start the dev server afterward." -ForegroundColor Cyan
-    npm create vite@latest $name
+    Write-Host 'Choose your Vite framework and variant. This command completes installation after your selection.' -ForegroundColor Cyan
+    npm create vite@latest $name -- --no-immediate
     if ($LASTEXITCODE -ne 0) {
         throw "Vite setup failed for '$name'."
     }
