@@ -551,7 +551,6 @@ export default function ThreeScene() {
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -710,7 +709,6 @@ export default defineConfig({
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -844,7 +842,6 @@ export default defineConfig({
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -1017,7 +1014,6 @@ export default defineConfig({
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
