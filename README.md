@@ -113,7 +113,7 @@ To replace the preview with your application:
 
 ## Responsive Screens
 
-Tailwind starters replace Tailwind's default screens with these project-specific names:
+Tailwind starters adds Tailwind's default screens with these specific names:
 
 | Screen | Width | Example |
 | --- | --- | --- |
