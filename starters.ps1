@@ -551,7 +551,6 @@ export default function ThreeScene() {
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -664,13 +663,13 @@ function vanilla-project {
         <h1>SLMN Vanilla Starter</h1>
         <h2>$name</h2>
     </main>
-    <script src="./js/main.js"></script>
+    <script src="./js/script.js"></script>
 </body>
 </html>
 "@ | Out-File (Join-Path $path 'index.html') -Encoding utf8
 
     Get-ResponsiveCss | Out-File (Join-Path $path 'css/style.css') -Encoding utf8
-    Set-Content (Join-Path $path 'js/main.js') -Value "console.log('Page loaded')" -Encoding utf8
+    Set-Content (Join-Path $path 'js/script.js') -Value "console.log('Page loaded')" -Encoding utf8
 
     Open-ProjectEditor $path
 }
@@ -710,7 +709,6 @@ export default defineConfig({
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -844,7 +842,6 @@ export default defineConfig({
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -1017,7 +1014,6 @@ export default defineConfig({
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
