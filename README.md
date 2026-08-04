@@ -1,3 +1,5 @@
+<img width="1918" height="1034" alt="image" src="https://github.com/user-attachments/assets/54ddb4e6-c46d-4273-a1e0-d909b771f47a" />
+
 # SLMN Frontend Starters
 
 PowerShell commands for creating clean frontend projects on your Desktop. `slmn-app` is the flagship starter: a complete, removable React technology demo. The other commands are focused alternatives for smaller starting points.
@@ -111,7 +113,11 @@ To replace the preview with your application:
 
 ## Responsive Screens
 
+<<<<<<< HEAD
 Tailwind starters add Tailwind's media screens with these specific names:
+=======
+Tailwind starters adds Tailwind's default screens with these specific names:
+>>>>>>> 2f53f0dc3a24b84507625f92e211089274c99875
 
 | Screen | Width | Example |
 | --- | --- | --- |
