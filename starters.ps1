@@ -4,6 +4,8 @@
 # Usage:
 #   . .\starters.ps1
 #
+#   slmn-starter
+#
 #   slmn-app "my-app"
 #
 #   vanilla-project "my-site"
@@ -142,6 +144,46 @@ function Confirm-Feature {
             }
             default {
                 Write-Host "`nPress Y for Yes or N for No." -ForegroundColor Yellow
+            }
+        }
+    }
+}
+
+function Select-StarterCommand {
+    $options = @(
+        @{ Label = 'Vanilla'; Command = 'vanilla-project' },
+        @{ Label = 'Tailwind CSS'; Command = 'tailwind-project' },
+        @{ Label = 'GSAP'; Command = 'gsap-project' },
+        @{ Label = 'Tailwind CSS + GSAP'; Command = 'tailwind-gsap-project' },
+        @{ Label = 'React'; Command = 'react-project' },
+        @{ Label = 'React + Tailwind CSS + GSAP'; Command = 'react-tailwind-gsap-project' },
+        @{ Label = 'Vite (choose framework and variant)'; Command = 'vite-app' },
+        @{ Label = 'Next.js'; Command = 'next-app' },
+        @{ Label = 'SLMN App (React JavaScript)'; Command = 'slmn-app' }
+    )
+    $selectedIndex = 0
+
+    while ($true) {
+        Clear-Host
+        Write-Host 'SLMN Starter' -ForegroundColor Cyan
+        Write-Host 'Use Up/Down arrows, then Enter to choose a starter.' -ForegroundColor DarkGray
+        Write-Host ''
+
+        for ($index = 0; $index -lt $options.Count; $index++) {
+            $prefix = if ($index -eq $selectedIndex) { '> ' } else { '  ' }
+            $color = if ($index -eq $selectedIndex) { 'Blue' } else { 'White' }
+            Write-Host "$prefix$($options[$index].Label)" -ForegroundColor $color
+        }
+
+        switch ([Console]::ReadKey($true).Key) {
+            'UpArrow' {
+                $selectedIndex = if ($selectedIndex -eq 0) { $options.Count - 1 } else { $selectedIndex - 1 }
+            }
+            'DownArrow' {
+                $selectedIndex = if ($selectedIndex -eq ($options.Count - 1)) { 0 } else { $selectedIndex + 1 }
+            }
+            'Enter' {
+                return $options[$selectedIndex].Command
             }
         }
     }
@@ -727,7 +769,7 @@ export default defineConfig({
 import './style.css'
 
 console.log('Page loaded')
-'@ | Out-File "src/main.js" -Encoding utf8
+'@ | Out-File "src/script.js" -Encoding utf8
 
     @"
 <!DOCTYPE html>
@@ -742,7 +784,7 @@ console.log('Page loaded')
         <h1>SLMN Tailwind Starter</h1>
         <h2 class="text-3xl font-semibold tab:text-4xl lap:text-5xl fhd:text-6xl 2k:text-7xl 4k:text-8xl">$name</h2>
     </main>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/script.js"></script>
 </body>
 </html>
 "@ | Out-File "index.html" -Encoding utf8
@@ -786,7 +828,7 @@ function gsap-project {
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-    <script src="./js/main.js"></script>
+    <script src="./js/script.js"></script>
 </body>
 </html>
 "@ | Out-File "index.html" -Encoding utf8
@@ -801,7 +843,7 @@ gsap.from('.title', {
     ease: 'power2.out'
 })
 console.log('Page loaded')
-"@ | Out-File "js/main.js" -Encoding utf8
+"@ | Out-File "js/script.js" -Encoding utf8
 
     Open-ProjectEditor $path
 }
@@ -868,7 +910,7 @@ gsap.from('.title', {
 })
 
 console.log('Page loaded')
-'@ | Out-File "src/main.js" -Encoding utf8
+'@ | Out-File "src/script.js" -Encoding utf8
 
     @"
 <!DOCTYPE html>
@@ -882,7 +924,7 @@ console.log('Page loaded')
     <main class="grid min-h-screen place-items-center px-4">
         <h1 class="title text-3xl font-semibold tab:text-4xl lap:text-5xl fhd:text-6xl 2k:text-7xl 4k:text-8xl">$name</h1>
     </main>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/script.js"></script>
 </body>
 </html>
 "@ | Out-File "index.html" -Encoding utf8
@@ -1136,20 +1178,28 @@ function slmn-app {
     param([Parameter(Mandatory)][string]$name)
 
     $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
-    $path = Join-Path $desktop $name
+    $projectName = ($name.Trim().ToLowerInvariant() -replace '[^a-z0-9._-]+', '-').Trim([char[]]'.-_')
+    if ([string]::IsNullOrWhiteSpace($projectName)) {
+        throw 'Project name must contain at least one letter or number.'
+    }
+
+    $path = Join-Path $desktop $projectName
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
     Set-Location $desktop
-    Write-Host 'Choose React and either JavaScript or TypeScript. SLMN App installs Tailwind CSS, GSAP, Three.js, and React Icons, then replaces the default Vite page with a working demo.' -ForegroundColor Cyan
-    npm create vite@latest $name -- --no-immediate
+    if ($projectName -ne $name) {
+        Write-Host "Using project folder name: $projectName" -ForegroundColor DarkGray
+    }
+    Write-Host 'Creating the React JavaScript SLMN App, then installing Tailwind CSS, GSAP, Three.js, and React Icons.' -ForegroundColor Cyan
+    npx --yes create-vite@latest $projectName --no-interactive --no-immediate --template react
     if ($LASTEXITCODE -ne 0) {
         throw "Vite setup failed for '$name'."
     }
 
     if (-not (Test-ProjectDependency -Path $path -Name 'react')) {
-        throw "Full starter requires React. Create the project again and choose React in Vite's framework prompt."
+        throw 'Full starter requires the React template, but Vite did not create it.'
     }
 
     Push-Location $path
@@ -1160,7 +1210,7 @@ function slmn-app {
         if (Test-Path -LiteralPath (Join-Path $path 'src/App.tsx')) {
             Invoke-NpmDevInstall @types/three
         }
-        Set-FullDemoPage -Path $path -Name $name
+        Set-FullDemoPage -Path $path -Name $projectName
     } finally {
         Pop-Location
     }
@@ -1177,7 +1227,22 @@ function full-app {
 }
 
 # -----------------------------
-# 9. INTERACTIVE NEXT.JS
+# 9. STARTER MENU
+# -----------------------------
+function slmn-starter {
+    $command = Select-StarterCommand
+    Clear-Host
+    Write-Host "Selected: $command" -ForegroundColor Cyan
+    $name = Read-Host 'Project name'
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        throw 'A project name is required.'
+    }
+
+    & $command $name.Trim()
+}
+
+# -----------------------------
+# 10. INTERACTIVE NEXT.JS
 # -----------------------------
 function next-app {
     param([Parameter(Mandatory)][string]$name)
