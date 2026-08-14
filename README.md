@@ -25,8 +25,10 @@ slmn-starter
 | `tailwind-project "my-site"` | Vite, Tailwind CSS v4 | Dark static HTML with a centered heading and custom Tailwind screens |
 | `gsap-project "my-site"` | HTML, CSS, JavaScript, GSAP CDN | One heading with a small entrance animation |
 | `tailwind-gsap-project "my-site"` | Vite, Tailwind CSS v4, GSAP | Dark static HTML with one animated heading |
-| `react-project "my-site"` | Vite, React | A dark page with a minimal `useState` counter |
-| `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | A dark animated React heading and `useState` counter |
+| `react-project "my-site"` | Vite, React | Removable React technology preview linking to Vite, React, and JavaScript |
+| `react-tailwind-project "my-site"` | Vite, React, Tailwind CSS v4 | Removable React preview linking to Vite, React, JavaScript, and Tailwind CSS |
+| `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | Removable React preview with GSAP entrance motion and stack-specific links |
+| `react-tailwind-gsap-three-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP, Three.js, React Icons | Full removable React technology demo with the interactive Three.js model |
 | `vite-app "my-app"` | Vite | Official Vite prompts, then optional Tailwind CSS, GSAP, and Three.js |
 | `full-app "my-demo"` | Alias for `slmn-app` | Backwards-compatible name for the flagship starter |
 | `next-app "my-next-app"` | Next.js | Official Create Next App prompts, then optional GSAP and Three.js |
@@ -119,7 +121,9 @@ tailwind-project "tailwind-demo"
 gsap-project "gsap-hero"
 tailwind-gsap-project "animated-site"
 react-project "portfolio"
+react-tailwind-project "tailwind-app"
 react-tailwind-gsap-project "motion-app"
+react-tailwind-gsap-three-project "three-app"
 slmn-app "my-app"
 vite-app "my-app"
 next-app "my-next-app"
@@ -127,13 +131,7 @@ next-app "my-next-app"
 
 `slmn-starter` shows every starter, including `slmn-app`, in one menu. Use the Up and Down arrow keys to choose a starter, press Enter, type the project name, and press Enter again. Choosing `SLMN App` creates its React JavaScript project without further setup questions. Its project name is converted to a lowercase npm-safe folder name, so `APPP` becomes `appp`. Choosing Vite opens its normal framework and variant selector next.
 
-Projects are created at `Desktop\<project-name>`. Vite-based starters scaffold, install npm packages, replace the default files, and then open the finished project in VS Code. They use Vite's non-interactive mode, so no development server is started while the project is being created.
-
-For Tailwind, Tailwind + GSAP, React, and React + Tailwind + GSAP, start the development server from the opened project:
-
-```powershell
-npm run dev
-```
+Projects are created at `Desktop\<project-name>`. Vite-based starters scaffold, install npm packages, replace the default files, and then open the finished project in VS Code. Every React starter starts `npm run dev` automatically after the project is ready.
 
 The Vanilla starter can be opened directly in a browser or served with your preferred local server. The GSAP starter loads GSAP from a CDN, so its first animation requires an internet connection.
 
@@ -159,15 +157,15 @@ cd <your-repository>
 
 They need Node.js, npm, and optionally the VS Code `code` command installed as described in **Requirements**.
 
-The preview is split into removable files: `src/App.*` is a small composition root, `src/components/Hero.*` owns the header and GSAP animation, `src/components/TechPill.*` owns the technology links and brand icons, `src/components/three/ThreeScene.*` owns the pointer-controlled model, and `src/styles/demo.css` contains preview-specific styles. Vite, React, JavaScript, Tailwind CSS, GSAP, and Three.js cards link to their official sites or primary documentation in a new browser tab.
+Every React preview is split into removable files: `src/App.jsx` is a small composition root, `src/components/Hero.jsx` owns the header and optional GSAP animation, `src/components/TechPill.jsx` owns the stack-specific technology links, and `src/styles/demo.css` contains preview-specific styles. The React + Tailwind + GSAP + Three.js starter and `slmn-app` additionally include `src/components/three/ThreeScene.jsx`. Cards link only to tools installed by that starter and open their official sites or primary documentation in a new browser tab.
 
 To replace the preview with your application:
 
 1. In `src/App.*`, remove the `Hero` and `demo.css` imports.
 2. Replace `<Hero />` inside `<main className="app-shell">` with your own components.
-3. Delete `src/components/Hero.*`, `src/components/TechPill.*`, `src/components/three`, and `src/styles/demo.css`.
+3. Delete `src/components/Hero.jsx`, `src/components/TechPill.jsx`, and `src/styles/demo.css`. Delete `src/components/three` for the Three.js starter as well.
 4. Keep `src/styles/app.css`; it provides the permanent application shell.
-5. Run `npm uninstall gsap three react-icons` when you do not plan to use those preview-only packages.
+5. Run `npm uninstall gsap`, `npm uninstall three react-icons`, or both when you do not plan to use those preview-only packages.
 
 ## Responsive Screens
 
@@ -190,8 +188,8 @@ The goal is a clean place to begin, not a sample app:
 - Every starter begins with a modern charcoal `#171717` background and white text. There is no light/dark toggle.
 - Vanilla and GSAP use only an HTML entry point, CSS, and linked JavaScript. Their JavaScript logs `Page loaded` in the browser console.
 - Tailwind and Tailwind + GSAP keep their `<main>` and `<h1>` directly in `index.html`; `src/script.js` only loads CSS and, when applicable, runs GSAP.
-- React uses only `src/main.jsx`, `src/App.jsx`, and `src/index.css` in addition to Vite and npm files. It starts with a small `useState` count button.
-- React + Tailwind + GSAP combines the custom screens, title entrance animation, and the same small React counter.
+- Every React starter uses a small `App.jsx` composition root and places its removable preview in `src/components/Hero.jsx`, `src/components/TechPill.jsx`, and `src/styles/demo.css`. Each preview lists links only for tools installed by that starter.
+- React + Tailwind + GSAP + Three.js uses the richer `ThreeScene` component from the flagship demo.
 - The full React demo keeps `App` intentionally small and places the Three.js preview in `src/components/three/ThreeScene.*`; moving the pointer over its canvas rotates the model.
 - JavaScript and React entries log `Page loaded` in the browser console.
 
