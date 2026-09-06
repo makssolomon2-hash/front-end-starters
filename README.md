@@ -67,8 +67,8 @@ Get the folder in either of these ways:
 - **Git:** Clone the repository, then enter its folder:
 
 ```powershell
-git clone https://github.com/<your-account>/<your-repository>.git
-cd <your-repository>
+git clone https://github.com/makssolomon2-hash/front-end-starters.git
+cd front-end-starters
 ```
 
 Confirm that PowerShell is in the folder containing `starters.ps1`:
@@ -206,8 +206,8 @@ Share the whole `STARTER` folder, including `starters.ps1` and `README.md`. The 
 For GitHub, create a repository, commit these two files, and share the repository URL. A recipient can then run:
 
 ```powershell
-git clone https://github.com/<your-account>/<your-repository>.git
-cd <your-repository>
+git clone https://github.com/makssolomon2-hash/front-end-starters.git
+cd front-end-starters
 . .\starters.ps1
 ```
 
