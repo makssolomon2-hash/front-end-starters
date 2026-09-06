@@ -18,6 +18,228 @@
 #   next-app "my-next-app"
 # ============================================
 
+$script:SlmnSourcePath = $PSCommandPath
+
+function Get-SlmnInstallDirectory {
+    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        throw 'USERPROFILE is not available; SLMN cannot determine its installation directory.'
+    }
+
+    return (Join-Path $env:USERPROFILE '.slmn')
+}
+
+function Get-SlmnConfigPath {
+    return (Join-Path (Get-SlmnInstallDirectory) 'config.json')
+}
+
+function Initialize-SlmnStorage {
+    $installDirectory = Get-SlmnInstallDirectory
+    $configPath = Get-SlmnConfigPath
+
+    New-Item -ItemType Directory -Path $installDirectory -Force | Out-Null
+    if (-not (Test-Path -LiteralPath $configPath)) {
+        @'
+{
+    "projectsPath": "%USERPROFILE%\\Desktop",
+    "defaultStarter": "slmn-app",
+    "openInVSCode": true,
+    "autoStartDev": true
+}
+'@ | Set-Content -LiteralPath $configPath -Encoding utf8
+    }
+
+    return $configPath
+}
+
+function Get-SlmnConfiguration {
+    $configPath = Initialize-SlmnStorage
+    try {
+        return (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json)
+    } catch {
+        throw "SLMN configuration is invalid: $configPath. $($_.Exception.Message)"
+    }
+}
+
+function Get-SlmnProjectsPath {
+    param([string]$OverridePath)
+
+    $projectsPath = if ([string]::IsNullOrWhiteSpace($OverridePath)) {
+        (Get-SlmnConfiguration).projectsPath
+    } else {
+        $OverridePath
+    }
+    if ([string]::IsNullOrWhiteSpace($projectsPath)) {
+        throw 'The SLMN projects path is empty. Set one with: slmn-config path "D:\Projects"'
+    }
+
+    $expandedPath = [Environment]::ExpandEnvironmentVariables($projectsPath)
+    $resolvedPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($expandedPath)
+    New-Item -ItemType Directory -Path $resolvedPath -Force | Out-Null
+    return (Resolve-Path -LiteralPath $resolvedPath).Path
+}
+
+function slmn-config {
+    param(
+        [string]$Setting,
+        [string]$Value
+    )
+
+    $configPath = Initialize-SlmnStorage
+    $configuration = Get-SlmnConfiguration
+    if ([string]::IsNullOrWhiteSpace($Setting)) {
+        $configuration | ConvertTo-Json -Depth 3
+        return
+    }
+
+    if ($Setting -ine 'path') {
+        throw 'Supported setting: path. Examples: slmn-config path "D:\Projects" or slmn-config path desktop'
+    }
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw 'Provide a projects path. Example: slmn-config path "D:\Projects"'
+    }
+
+    $configuration.projectsPath = if ($Value -ieq 'desktop') { '%USERPROFILE%\Desktop' } else { $Value.Trim() }
+    Get-SlmnProjectsPath -OverridePath $configuration.projectsPath | Out-Null
+    $configuration | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $configPath -Encoding utf8
+    Write-Host "SLMN projects path: $(Get-SlmnProjectsPath)" -ForegroundColor Green
+}
+
+function Get-SlmnProfilePath {
+    # $PROFILE identifies PowerShell's per-user profile scripts. All Hosts loads in PowerShell,
+    # Windows Terminal, and VS Code, unlike a host-specific profile such as $PROFILE.CurrentUserCurrentHost.
+    return $PROFILE.CurrentUserAllHosts
+}
+
+function Remove-SlmnProfileEntry {
+    param([string]$ProfilePath)
+
+    if (-not (Test-Path -LiteralPath $ProfilePath)) {
+        return $false
+    }
+
+    $profileLinePattern = '^\s*\.\s+["'']?\$env:USERPROFILE\\\.slmn\\starters\.ps1["'']?\s*$'
+    $lines = Get-Content -LiteralPath $ProfilePath
+    $remainingLines = @($lines | Where-Object { $_ -notmatch $profileLinePattern })
+    if ($remainingLines.Count -eq $lines.Count) {
+        return $false
+    }
+
+    Set-Content -LiteralPath $ProfilePath -Value $remainingLines -Encoding utf8
+    return $true
+}
+
+function slmn-install {
+    if ([string]::IsNullOrWhiteSpace($script:SlmnSourcePath) -or -not (Test-Path -LiteralPath $script:SlmnSourcePath)) {
+        throw 'Run slmn-install from a loaded starters.ps1 file.'
+    }
+
+    $installDirectory = Get-SlmnInstallDirectory
+    $installedScriptPath = Join-Path $installDirectory 'starters.ps1'
+    $profilePath = Get-SlmnProfilePath
+    New-Item -ItemType Directory -Path $installDirectory -Force | Out-Null
+    $sourceScriptPath = (Resolve-Path -LiteralPath $script:SlmnSourcePath).Path
+    $currentInstalledPath = (Resolve-Path -LiteralPath $installedScriptPath -ErrorAction SilentlyContinue).Path
+    if ($sourceScriptPath -ne $currentInstalledPath) {
+        Copy-Item -LiteralPath $script:SlmnSourcePath -Destination $installedScriptPath -Force
+    }
+    $sourceHotkeysPath = Join-Path (Split-Path -Parent $script:SlmnSourcePath) 'slmn-hotkeys.ahk'
+    if (Test-Path -LiteralPath $sourceHotkeysPath) {
+        $installedHotkeysPath = Join-Path $installDirectory 'slmn-hotkeys.ahk'
+        if ((Resolve-Path -LiteralPath $sourceHotkeysPath).Path -ne (Resolve-Path -LiteralPath $installedHotkeysPath -ErrorAction SilentlyContinue).Path) {
+            Copy-Item -LiteralPath $sourceHotkeysPath -Destination $installedHotkeysPath -Force
+        }
+    }
+    Initialize-SlmnStorage | Out-Null
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $profilePath) -Force | Out-Null
+    if (-not (Test-Path -LiteralPath $profilePath)) {
+        New-Item -ItemType File -Path $profilePath -Force | Out-Null
+    }
+    Remove-SlmnProfileEntry -ProfilePath $profilePath | Out-Null
+    Add-Content -LiteralPath $profilePath -Value '. "$env:USERPROFILE\.slmn\starters.ps1"'
+
+    Write-Host 'SLMN installed. Open a new PowerShell terminal to use the commands everywhere.' -ForegroundColor Green
+}
+
+function slmn-uninstall {
+    $profilePath = Get-SlmnProfilePath
+    if (Remove-SlmnProfileEntry -ProfilePath $profilePath) {
+        Write-Host 'SLMN profile entry removed. The files in ~/.slmn were kept.' -ForegroundColor Green
+    } else {
+        Write-Host 'No SLMN profile entry was found.' -ForegroundColor Yellow
+    }
+}
+
+function slmn-update {
+    param([string]$SourcePath = $script:SlmnSourcePath)
+
+    if ([string]::IsNullOrWhiteSpace($SourcePath) -or -not (Test-Path -LiteralPath $SourcePath)) {
+        throw 'Provide a valid starters.ps1 file with: slmn-update -SourcePath "C:\path\to\starters.ps1"'
+    }
+
+    $installedScriptPath = Join-Path (Get-SlmnInstallDirectory) 'starters.ps1'
+    if ((Resolve-Path -LiteralPath $SourcePath).Path -eq (Resolve-Path -LiteralPath $installedScriptPath -ErrorAction SilentlyContinue).Path) {
+        Write-Host 'The installed SLMN script is already the loaded copy. Load a newer starters.ps1, then run slmn-update.' -ForegroundColor Yellow
+        return
+    }
+
+    New-Item -ItemType Directory -Path (Get-SlmnInstallDirectory) -Force | Out-Null
+    Copy-Item -LiteralPath $SourcePath -Destination $installedScriptPath -Force
+    $sourceHotkeysPath = Join-Path (Split-Path -Parent $SourcePath) 'slmn-hotkeys.ahk'
+    if (Test-Path -LiteralPath $sourceHotkeysPath) {
+        Copy-Item -LiteralPath $sourceHotkeysPath -Destination (Join-Path (Get-SlmnInstallDirectory) 'slmn-hotkeys.ahk') -Force
+    }
+    Initialize-SlmnStorage | Out-Null
+    Write-Host 'SLMN updated. Open a new PowerShell terminal to load the updated commands.' -ForegroundColor Green
+}
+
+function Get-SlmnHotkeysPath {
+    return (Join-Path (Get-SlmnInstallDirectory) 'slmn-hotkeys.ahk')
+}
+
+function Get-SlmnHotkeysStartupShortcutPath {
+    return (Join-Path ([Environment]::GetFolderPath('Startup')) 'SLMN Hotkeys.lnk')
+}
+
+function slmn-install-hotkeys {
+    $sourceDirectory = Split-Path -Parent $script:SlmnSourcePath
+    $sourcePath = Join-Path $sourceDirectory 'slmn-hotkeys.ahk'
+    if (-not (Test-Path -LiteralPath $sourcePath)) {
+        throw "slmn-hotkeys.ahk was not found next to starters.ps1: $sourcePath"
+    }
+
+    $autoHotkey = Get-Command AutoHotkey.exe, AutoHotkey64.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $autoHotkey) {
+        throw 'AutoHotkey v2 was not found in PATH. Install it from https://www.autohotkey.com/ and run slmn-install-hotkeys again.'
+    }
+
+    $hotkeysPath = Get-SlmnHotkeysPath
+    New-Item -ItemType Directory -Path (Get-SlmnInstallDirectory) -Force | Out-Null
+    Copy-Item -LiteralPath $sourcePath -Destination $hotkeysPath -Force
+
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut((Get-SlmnHotkeysStartupShortcutPath))
+    $shortcut.TargetPath = $autoHotkey.Source
+    $shortcut.Arguments = '"' + $hotkeysPath + '"'
+    $shortcut.WorkingDirectory = Get-SlmnInstallDirectory
+    $shortcut.Save()
+
+    Start-Process -FilePath $autoHotkey.Source -ArgumentList ('"' + $hotkeysPath + '"')
+    Write-Host 'SLMN hotkeys installed and started. They will load automatically when you sign in.' -ForegroundColor Green
+}
+
+function slmn-uninstall-hotkeys {
+    $hotkeysPath = Get-SlmnHotkeysPath
+    $escapedPath = [regex]::Escape($hotkeysPath)
+    Get-CimInstance Win32_Process -Filter "Name = 'AutoHotkey.exe' OR Name = 'AutoHotkey64.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match $escapedPath } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
+    Remove-Item -LiteralPath (Get-SlmnHotkeysStartupShortcutPath) -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $hotkeysPath -Force -ErrorAction SilentlyContinue
+    Write-Host 'SLMN hotkeys were removed.' -ForegroundColor Green
+}
+
 function Get-ResponsiveCss {
 @'
 * {
@@ -95,9 +317,164 @@ button:hover {
 '@
 }
 
+function Set-StaticStarterScreen {
+    param(
+        [string]$Path,
+        [string]$Name,
+        [string[]]$Technologies,
+        [switch]$UseVite,
+        [switch]$UseGsap
+    )
+
+    $technologyPills = ($Technologies | ForEach-Object { "        <span class=`"slmn-tech-pill`">$_</span>" }) -join "`n"
+    $scriptTag = if ($UseVite) { '<script type="module" src="/src/script.js"></script>' } else { '<script src="./js/script.js"></script>' }
+    $gsapScript = if ($UseGsap -and -not $UseVite) { '    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>' } else { '' }
+    $stylesheetHref = if ($UseVite) { '/src/style.css' } else { './css/style.css' }
+
+    @"
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$Name</title>
+    <link rel="stylesheet" href="$stylesheetHref">
+</head>
+<body>
+    <main class="slmn-start">
+        <section class="slmn-screen">
+            <p class="slmn-kicker" data-slmn-reveal>SLMN Starter</p>
+            <h1 data-slmn-reveal>Ready to build.</h1>
+            <p class="slmn-project" data-slmn-reveal>$Name</p>
+            <div class="slmn-tech-list" data-slmn-reveal>
+$technologyPills
+            </div>
+        </section>
+    </main>
+$gsapScript
+    $scriptTag
+</body>
+</html>
+"@ | Set-Content -LiteralPath (Join-Path $Path 'index.html') -Encoding utf8
+
+    @'
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    color: #ffffff;
+    background: #171717;
+    font-family: "Segoe UI", sans-serif;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.slmn-start {
+    display: grid;
+    min-height: 100vh;
+    padding: 1.5rem;
+    place-items: center;
+    background-color: #171717;
+    background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+}
+
+.slmn-screen {
+    width: min(100%, 56rem);
+}
+
+.slmn-kicker {
+    margin: 0 0 1rem;
+    color: #93c5fd;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.slmn-screen h1 {
+    max-width: 42rem;
+    margin: 0;
+    font-size: clamp(2.5rem, 7vw, 4.75rem);
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.slmn-project {
+    margin: 1.25rem 0 0;
+    color: #d4d4d4;
+    font-size: clamp(1rem, 3vw, 1.25rem);
+}
+
+.slmn-tech-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.625rem;
+    margin-top: 2rem;
+}
+
+.slmn-tech-pill {
+    padding: 0.625rem 0.875rem;
+    color: #dbeafe;
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: rgb(96 165 250 / 0.14);
+    border: 1px solid rgb(147 197 253 / 0.34);
+}
+
+@media (min-width: 48rem) {
+    .slmn-start {
+        padding: 2.5rem;
+    }
+}
+'@ | ForEach-Object {
+        $stylesheetPath = Join-Path $Path $(if ($UseVite) { 'src/style.css' } else { 'css/style.css' })
+        New-Item -ItemType Directory -Path (Split-Path -Parent $stylesheetPath) -Force | Out-Null
+        Set-Content -LiteralPath $stylesheetPath -Value $_ -Encoding utf8
+    }
+
+    $scriptPath = Join-Path $Path $(if ($UseVite) { 'src/script.js' } else { 'js/script.js' })
+    New-Item -ItemType Directory -Path (Split-Path -Parent $scriptPath) -Force | Out-Null
+    $script = if ($UseGsap -and $UseVite) {
+@'
+import './style.css'
+import gsap from 'gsap'
+
+gsap.from('[data-slmn-reveal]', {
+    y: 18,
+    opacity: 0,
+    duration: 0.55,
+    stagger: 0.1,
+    ease: 'power2.out',
+})
+'@
+    } elseif ($UseGsap) {
+@'
+gsap.from('[data-slmn-reveal]', {
+    y: 18,
+    opacity: 0,
+    duration: 0.55,
+    stagger: 0.1,
+    ease: 'power2.out',
+})
+'@
+    } elseif ($UseVite) {
+        "import './style.css'`n"
+    } else {
+        "console.log('Page loaded')`n"
+    }
+    Set-Content -LiteralPath $scriptPath -Value $script -Encoding utf8
+}
+
 function Invoke-Npm {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
 
+    Write-Host "Running: npm $($Arguments -join ' ')" -ForegroundColor Cyan
     & npm @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "npm $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
@@ -107,6 +484,7 @@ function Invoke-Npm {
 function Invoke-NpmDevInstall {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Packages)
 
+    Write-Host "Installing development packages: $($Packages -join ', ')" -ForegroundColor Cyan
     & npm install --save-dev @Packages
     if ($LASTEXITCODE -ne 0) {
         throw "npm install --save-dev $($Packages -join ' ') failed with exit code $LASTEXITCODE."
@@ -116,6 +494,12 @@ function Invoke-NpmDevInstall {
 function Open-ProjectEditor {
     param([string]$Path)
 
+    Write-Host "Project created: $Path" -ForegroundColor Green
+    if (-not (Get-SlmnConfiguration).openInVSCode) {
+        Write-Host 'VS Code opening is disabled in SLMN configuration.' -ForegroundColor DarkGray
+        return
+    }
+
     if (Get-Command code -ErrorAction SilentlyContinue) {
         & code $Path
         if ($LASTEXITCODE -ne 0) {
@@ -123,6 +507,14 @@ function Open-ProjectEditor {
         }
     } else {
         Write-Warning "VS Code CLI ('code') was not found. Open manually: $Path"
+    }
+}
+
+function Start-SlmnDevServer {
+    if ((Get-SlmnConfiguration).autoStartDev) {
+        Invoke-Npm run dev
+    } else {
+        Write-Host 'Automatic dev-server start is disabled in SLMN configuration.' -ForegroundColor DarkGray
     }
 }
 
@@ -151,33 +543,34 @@ function Confirm-Feature {
 
 function Select-StarterCommand {
     $options = @(
-        @{ Label = 'Vanilla'; Command = 'vanilla-project' },
-        @{ Label = 'Tailwind CSS'; Command = 'tailwind-project' },
-        @{ Label = 'GSAP'; Command = 'gsap-project' },
-        @{ Label = 'Tailwind CSS + GSAP'; Command = 'tailwind-gsap-project' },
-        @{ Label = 'React'; Command = 'react-project' },
-        @{ Label = 'React + Tailwind CSS'; Command = 'react-tailwind-project' },
-        @{ Label = 'React + Tailwind CSS + GSAP'; Command = 'react-tailwind-gsap-project' },
-        @{ Label = 'React + Tailwind CSS + GSAP + Three.js'; Command = 'react-tailwind-gsap-three-project' },
-        @{ Label = 'Vite (choose framework and variant)'; Command = 'vite-app' },
-        @{ Label = 'Next.js'; Command = 'next-app' },
-        @{ Label = 'SLMN App (React JavaScript)'; Command = 'slmn-app' }
+        @{ Label = 'Vanilla'; Shortcut = '1 / V'; Keys = @('1', 'v'); Command = 'vanilla-project' },
+        @{ Label = 'Tailwind CSS'; Shortcut = '2 / T'; Keys = @('2', 't'); Command = 'tailwind-project' },
+        @{ Label = 'GSAP'; Shortcut = '3 / G'; Keys = @('3', 'g'); Command = 'gsap-project' },
+        @{ Label = 'Tailwind CSS + GSAP'; Shortcut = '4 / TG'; Keys = @('4', 'tg'); Command = 'tailwind-gsap-project' },
+        @{ Label = 'React'; Shortcut = '5 / R'; Keys = @('5', 'r'); Command = 'react-project' },
+        @{ Label = 'React + Tailwind CSS'; Shortcut = '6 / RT'; Keys = @('6', 'rt'); Command = 'react-tailwind-project' },
+        @{ Label = 'React + Tailwind CSS + GSAP'; Shortcut = '7 / RTG'; Keys = @('7', 'rtg'); Command = 'react-tailwind-gsap-project' },
+        @{ Label = 'SLMN App (flagship)'; Shortcut = '8 / A'; Keys = @('8', 'a'); Command = 'slmn-app' },
+        @{ Label = 'Vite (choose framework and variant)'; Shortcut = '9 / VITE'; Keys = @('9', 'vite'); Command = 'vite-app' },
+        @{ Label = 'Next.js'; Shortcut = '0 / NEXT'; Keys = @('0', 'next'); Command = 'next-app' }
     )
     $selectedIndex = 0
+    $shortcutBuffer = ''
 
     while ($true) {
         Clear-Host
         Write-Host 'SLMN Starter' -ForegroundColor Cyan
-        Write-Host 'Use Up/Down arrows, then Enter to choose a starter.' -ForegroundColor DarkGray
+        Write-Host 'Use Up/Down arrows and Enter, or type a shortcut.' -ForegroundColor DarkGray
         Write-Host ''
 
         for ($index = 0; $index -lt $options.Count; $index++) {
             $prefix = if ($index -eq $selectedIndex) { '> ' } else { '  ' }
             $color = if ($index -eq $selectedIndex) { 'Blue' } else { 'White' }
-            Write-Host "$prefix$($options[$index].Label)" -ForegroundColor $color
+            Write-Host ("{0}{1,-10} {2}" -f $prefix, "[$($options[$index].Shortcut)]", $options[$index].Label) -ForegroundColor $color
         }
 
-        switch ([Console]::ReadKey($true).Key) {
+        $keyInfo = [Console]::ReadKey($true)
+        switch ($keyInfo.Key) {
             'UpArrow' {
                 $selectedIndex = if ($selectedIndex -eq 0) { $options.Count - 1 } else { $selectedIndex - 1 }
             }
@@ -186,6 +579,32 @@ function Select-StarterCommand {
             }
             'Enter' {
                 return $options[$selectedIndex].Command
+            }
+            default {
+                if ([char]::IsControl($keyInfo.KeyChar)) {
+                    continue
+                }
+
+                $shortcutBuffer += $keyInfo.KeyChar.ToString().ToLowerInvariant()
+                $matches = @($options | Where-Object { $_.Keys | Where-Object { $_.StartsWith($shortcutBuffer) } })
+                if ($matches.Count -eq 0) {
+                    $shortcutBuffer = ''
+                    continue
+                }
+
+                $exactMatch = @($matches | Where-Object { $_.Keys -contains $shortcutBuffer })
+                $hasLongerMatch = @($matches | Where-Object { $_.Keys | Where-Object { $_.Length -gt $shortcutBuffer.Length } }).Count -gt 0
+                if ($exactMatch.Count -eq 1 -and -not $hasLongerMatch) {
+                    return $exactMatch[0].Command
+                }
+
+                $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+                while ($stopwatch.ElapsedMilliseconds -lt 650 -and -not [Console]::KeyAvailable) {
+                    [System.Threading.Thread]::Sleep(25)
+                }
+                if ($exactMatch.Count -eq 1 -and -not [Console]::KeyAvailable) {
+                    return $exactMatch[0].Command
+                }
             }
         }
     }
@@ -641,6 +1060,16 @@ function Set-ReactStarterDemo {
         [switch]$IncludeGsap
     )
 
+    $appPath = @(
+        (Join-Path $Path 'src/App.jsx'),
+        (Join-Path $Path 'src/App.tsx')
+    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $appPath) {
+        throw "React starter files were not found in $Path"
+    }
+
+    $componentExtension = if ($appPath.EndsWith('.tsx')) { 'tsx' } else { 'jsx' }
+    $techPillProps = if ($componentExtension -eq 'tsx') { ': { name: string; detail: string; href: string }' } else { '' }
     $componentsPath = Join-Path $Path 'src/components'
     $stylesPath = Join-Path $Path 'src/styles'
     New-Item -ItemType Directory -Path $componentsPath, $stylesPath -Force | Out-Null
@@ -696,7 +1125,7 @@ function Set-ReactStarterDemo {
     $description = if ($IncludeGsap) { 'A removable preview for React with a focused GSAP entrance animation.' } elseif ($IncludeTailwind) { 'A removable preview for React with Tailwind CSS ready for your application.' } else { 'A removable preview for a clean React application.' }
 
     @'
-import Hero from './components/Hero.jsx'
+import Hero from './components/Hero.$componentExtension'
 import './styles/app.css'
 import './styles/demo.css'
 
@@ -707,11 +1136,11 @@ export default function App() {
         </main>
     )
 }
-'@ | Set-Content -LiteralPath (Join-Path $Path 'src/App.jsx') -Encoding utf8
+'@ | Set-Content -LiteralPath $appPath -Encoding utf8
 
     @"
 $gsapImports
-import TechPill from './TechPill.jsx'
+import TechPill from './TechPill.$componentExtension'
 
 const technologies = [
 $technologyItems]
@@ -740,10 +1169,10 @@ $heroReference$animation
         </section>
     )
 }
-"@ | Set-Content -LiteralPath (Join-Path $componentsPath 'Hero.jsx') -Encoding utf8
+"@ | Set-Content -LiteralPath (Join-Path $componentsPath "Hero.$componentExtension") -Encoding utf8
 
-    @'
-export default function TechPill({ name, detail, href }) {
+    @"
+export default function TechPill({ name, detail, href }$techPillProps) {
     return (
         <a
             href={href}
@@ -759,7 +1188,7 @@ export default function TechPill({ name, detail, href }) {
         </a>
     )
 }
-'@ | Set-Content -LiteralPath (Join-Path $componentsPath 'TechPill.jsx') -Encoding utf8
+"@ | Set-Content -LiteralPath (Join-Path $componentsPath "TechPill.$componentExtension") -Encoding utf8
 
     @'
 #root,
@@ -912,9 +1341,162 @@ export default function TechPill({ name, detail, href }) {
     Invoke-Npm uninstall eslint @eslint/js eslint-plugin-react-hooks eslint-plugin-react-refresh globals
 }
 
+function Set-NextStarterScreen {
+    param(
+        [string]$Path,
+        [string]$Name,
+        [switch]$IncludeTailwind,
+        [switch]$IncludeGsap
+    )
+
+    $appDirectory = @(
+        (Join-Path $Path 'app'),
+        (Join-Path $Path 'src/app')
+    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $appDirectory) {
+        Write-Warning 'Could not find a Next.js App Router directory; the generated Next.js start screen was not applied.'
+        return
+    }
+
+    $pagePath = @('page.tsx', 'page.jsx', 'page.js') |
+        ForEach-Object { Join-Path $appDirectory $_ } |
+        Where-Object { Test-Path -LiteralPath $_ } |
+        Select-Object -First 1
+    if (-not $pagePath) {
+        Write-Warning 'Could not find a Next.js page file; the generated Next.js start screen was not applied.'
+        return
+    }
+
+    $componentExtension = if ($pagePath.EndsWith('.tsx')) { 'tsx' } else { 'jsx' }
+    $componentsDirectory = Join-Path (Split-Path -Parent $appDirectory) 'components'
+    New-Item -ItemType Directory -Path $componentsDirectory -Force | Out-Null
+    $technologies = @('Next.js', 'React', $(if ($componentExtension -eq 'tsx') { 'TypeScript' } else { 'JavaScript' }))
+    if ($IncludeTailwind) {
+        $technologies += 'Tailwind CSS'
+    }
+    if ($IncludeGsap) {
+        $technologies += 'GSAP'
+    }
+    $technologyPills = ($technologies | ForEach-Object { "                    <span className={styles.pill}>$_</span>" }) -join "`n"
+    $gsapImport = if ($IncludeGsap) { "import { useLayoutEffect, useRef } from 'react'`nimport gsap from 'gsap'" } else { '' }
+    $animation = if ($IncludeGsap) {
+@'
+    const screenRef = useRef(null)
+
+    useLayoutEffect(() => {
+        const context = gsap.context(() => {
+            gsap.from('[data-slmn-reveal]', {
+                y: 18,
+                opacity: 0,
+                duration: 0.55,
+                stagger: 0.1,
+                ease: 'power2.out',
+            })
+        }, screenRef)
+
+        return () => context.revert()
+    }, [])
+'@
+    } else { '' }
+    $screenReference = if ($IncludeGsap) { ' ref={screenRef}' } else { '' }
+
+    @"
+'use client'
+
+$gsapImport
+import styles from '../app/slmn-start.module.css'
+
+export default function SlmnStartScreen() {
+$animation
+    return (
+        <main$screenReference className={styles.shell}>
+            <section className={styles.content}>
+                <p className={styles.kicker} data-slmn-reveal>SLMN Starter</p>
+                <h1 data-slmn-reveal>Ready to build.</h1>
+                <p className={styles.project} data-slmn-reveal>$Name</p>
+                <div className={styles.pills} data-slmn-reveal>
+$technologyPills
+                </div>
+            </section>
+        </main>
+    )
+}
+"@ | Set-Content -LiteralPath (Join-Path $componentsDirectory "SlmnStartScreen.$componentExtension") -Encoding utf8
+
+    @"
+import SlmnStartScreen from '../components/SlmnStartScreen'
+
+export default function Home() {
+    return <SlmnStartScreen />
+}
+"@ | Set-Content -LiteralPath $pagePath -Encoding utf8
+
+    @'
+.shell {
+    display: grid;
+    min-height: 100vh;
+    padding: 1.5rem;
+    color: #ffffff;
+    background-color: #171717;
+    background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+    place-items: center;
+}
+
+.content {
+    width: min(100%, 56rem);
+}
+
+.kicker {
+    margin: 0 0 1rem;
+    color: #93c5fd;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.content h1 {
+    margin: 0;
+    font-size: clamp(2.5rem, 7vw, 4.75rem);
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.project {
+    margin: 1.25rem 0 0;
+    color: #d4d4d4;
+    font-size: clamp(1rem, 3vw, 1.25rem);
+}
+
+.pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.625rem;
+    margin-top: 2rem;
+}
+
+.pill {
+    padding: 0.625rem 0.875rem;
+    color: #dbeafe;
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: rgb(96 165 250 / 0.14);
+    border: 1px solid rgb(147 197 253 / 0.34);
+}
+
+@media (min-width: 48rem) {
+    .shell {
+        padding: 2.5rem;
+    }
+}
+'@ | Set-Content -LiteralPath (Join-Path $appDirectory 'slmn-start.module.css') -Encoding utf8
+}
+
 function Complete-InteractiveProject {
     param(
         [string]$Path,
+        [string]$Name,
         [ValidateSet('Vite', 'Next')][string]$Stack
     )
 
@@ -953,18 +1535,43 @@ function Complete-InteractiveProject {
         }
     }
 
+    if ($Stack -eq 'Vite') {
+        $includesTailwind = Test-ProjectDependency -Path $Path -Name 'tailwindcss'
+        $includesGsap = Test-ProjectDependency -Path $Path -Name 'gsap'
+        $hasReactApp = (Test-Path -LiteralPath (Join-Path $Path 'src/App.jsx')) -or (Test-Path -LiteralPath (Join-Path $Path 'src/App.tsx'))
+        if ($hasReactApp) {
+            Set-ReactStarterDemo -Path $Path -Name $Name -IncludeTailwind:$includesTailwind -IncludeGsap:$includesGsap
+        } elseif (Test-Path -LiteralPath (Join-Path $Path 'src/script.js')) {
+            $technologies = @('Vite', 'JavaScript')
+            if ($includesTailwind) {
+                $technologies += 'Tailwind CSS'
+            }
+            if ($includesGsap) {
+                $technologies += 'GSAP'
+            }
+            Set-StaticStarterScreen -Path $Path -Name $Name -Technologies $technologies -UseVite -UseGsap:$includesGsap
+        }
+    } else {
+        Set-NextStarterScreen -Path $Path -Name $Name `
+            -IncludeTailwind:(Test-ProjectDependency -Path $Path -Name 'tailwindcss') `
+            -IncludeGsap:(Test-ProjectDependency -Path $Path -Name 'gsap')
+    }
+
     Set-Location $Path
     Open-ProjectEditor $Path
-    Invoke-Npm run dev
+    Start-SlmnDevServer
 }
 
 # -----------------------------
 # 1. VANILLA (pure CSS, no npm)
 # -----------------------------
 function vanilla-project {
-    param([Parameter(Mandatory)][string]$name)
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $path = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)) $name
+    $path = Join-Path (Get-SlmnProjectsPath -OverridePath $ProjectRoot) $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
@@ -994,6 +1601,7 @@ function vanilla-project {
     Get-ResponsiveCss | Out-File (Join-Path $path 'css/style.css') -Encoding utf8
     Set-Content (Join-Path $path 'js/script.js') -Value "console.log('Page loaded')" -Encoding utf8
 
+    Set-StaticStarterScreen -Path $path -Name $name -Technologies 'HTML', 'CSS', 'JavaScript'
     Open-ProjectEditor $path
 }
 
@@ -1001,14 +1609,18 @@ function vanilla-project {
 # 2. TAILWIND (Vanilla + Vite)
 # -----------------------------
 function tailwind-project {
-    param([string]$name)
+    param(
+        [string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $path = Join-Path $HOME "Desktop\$name"
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
-    Set-Location (Join-Path $HOME "Desktop")
+    Set-Location $projectsRoot
 
     npm create vite@latest $name -- --no-interactive --template vanilla
     if ($LASTEXITCODE -ne 0) {
@@ -1075,6 +1687,7 @@ console.log('Page loaded')
     Remove-Item "public" -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item "README.md" -Force -ErrorAction SilentlyContinue
 
+    Set-StaticStarterScreen -Path $path -Name $name -Technologies 'Vite', 'Tailwind CSS', 'JavaScript' -UseVite
     Open-ProjectEditor $path
 }
 
@@ -1082,9 +1695,12 @@ console.log('Page loaded')
 # 3. GSAP (pure CSS, no Tailwind)
 # -----------------------------
 function gsap-project {
-    param([string]$name)
+    param(
+        [string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $path = Join-Path $HOME "Desktop\$name"
+    $path = Join-Path (Get-SlmnProjectsPath -OverridePath $ProjectRoot) $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
@@ -1126,6 +1742,7 @@ gsap.from('.title', {
 console.log('Page loaded')
 "@ | Out-File "js/script.js" -Encoding utf8
 
+    Set-StaticStarterScreen -Path $path -Name $name -Technologies 'HTML', 'CSS', 'JavaScript', 'GSAP' -UseGsap
     Open-ProjectEditor $path
 }
 
@@ -1133,14 +1750,18 @@ console.log('Page loaded')
 # 4. TAILWIND + GSAP
 # -----------------------------
 function tailwind-gsap-project {
-    param([string]$name)
+    param(
+        [string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $path = Join-Path $HOME "Desktop\$name"
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
-    Set-Location (Join-Path $HOME "Desktop")
+    Set-Location $projectsRoot
 
     npm create vite@latest $name -- --no-interactive --template vanilla
     if ($LASTEXITCODE -ne 0) {
@@ -1215,6 +1836,7 @@ console.log('Page loaded')
     Remove-Item "public" -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item "README.md" -Force -ErrorAction SilentlyContinue
 
+    Set-StaticStarterScreen -Path $path -Name $name -Technologies 'Vite', 'Tailwind CSS', 'JavaScript', 'GSAP' -UseVite -UseGsap
     Open-ProjectEditor $path
 }
 
@@ -1222,14 +1844,18 @@ console.log('Page loaded')
 # 5. REACT
 # -----------------------------
 function react-project {
-    param([string]$name)
+    param(
+        [string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $path = Join-Path $HOME "Desktop\$name"
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
-    Set-Location (Join-Path $HOME "Desktop")
+    Set-Location $projectsRoot
 
     npm create vite@latest $name -- --no-interactive --template react
     if ($LASTEXITCODE -ne 0) {
@@ -1269,21 +1895,25 @@ createRoot(document.getElementById('root')).render(
     Set-ReactStarterDemo -Path $path -Name $name
 
     Open-ProjectEditor $path
-    Invoke-Npm run dev
+    Start-SlmnDevServer
 }
 
 # -----------------------------
 # 6. REACT + TAILWIND CSS
 # -----------------------------
 function react-tailwind-project {
-    param([string]$name)
+    param(
+        [string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $path = Join-Path $HOME "Desktop\$name"
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
-    Set-Location (Join-Path $HOME "Desktop")
+    Set-Location $projectsRoot
 
     npm create vite@latest $name -- --no-interactive --template react
     if ($LASTEXITCODE -ne 0) {
@@ -1344,21 +1974,25 @@ createRoot(document.getElementById('root')).render(
     Set-ReactStarterDemo -Path $path -Name $name -IncludeTailwind
 
     Open-ProjectEditor $path
-    Invoke-Npm run dev
+    Start-SlmnDevServer
 }
 
 # -----------------------------
 # 7. REACT + TAILWIND CSS + GSAP
 # -----------------------------
 function react-tailwind-gsap-project {
-    param([string]$name)
+    param(
+        [string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $path = Join-Path $HOME "Desktop\$name"
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
-    Set-Location (Join-Path $HOME 'Desktop')
+    Set-Location $projectsRoot
     npm create vite@latest $name -- --no-interactive --template react
     if ($LASTEXITCODE -ne 0) {
         throw "Vite scaffold failed for '$name'."
@@ -1371,21 +2005,25 @@ function react-tailwind-gsap-project {
     Set-ReactStarterDemo -Path $path -Name $name -IncludeTailwind -IncludeGsap
 
     Open-ProjectEditor $path
-    Invoke-Npm run dev
+    Start-SlmnDevServer
 }
 
 # -----------------------------
 # 8. REACT + TAILWIND CSS + GSAP + THREE.JS
 # -----------------------------
 function react-tailwind-gsap-three-project {
-    param([string]$name)
+    param(
+        [string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $path = Join-Path $HOME "Desktop\$name"
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
-    Set-Location (Join-Path $HOME 'Desktop')
+    Set-Location $projectsRoot
     npm create vite@latest $name -- --no-interactive --template react
     if ($LASTEXITCODE -ne 0) {
         throw "Vite scaffold failed for '$name'."
@@ -1398,49 +2036,55 @@ function react-tailwind-gsap-three-project {
     Set-FullDemoPage -Path $path -Name $name
 
     Open-ProjectEditor $path
-    Invoke-Npm run dev
+    Start-SlmnDevServer
 }
 
 # -----------------------------
 # 9. INTERACTIVE VITE
 # -----------------------------
 function vite-app {
-    param([Parameter(Mandatory)][string]$name)
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
-    $path = Join-Path $desktop $name
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
-    Set-Location $desktop
+    Set-Location $projectsRoot
     Write-Host 'Choose your Vite framework and variant. This command completes installation after your selection.' -ForegroundColor Cyan
     npm create vite@latest $name -- --no-immediate
     if ($LASTEXITCODE -ne 0) {
         throw "Vite setup failed for '$name'."
     }
 
-    Complete-InteractiveProject -Path $path -Stack Vite
+    Complete-InteractiveProject -Path $path -Name $name -Stack Vite
 }
 
 # -----------------------------
 # 10. SLMN APP (FLAGSHIP DEMO)
 # -----------------------------
 function slmn-app {
-    param([Parameter(Mandatory)][string]$name)
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
     $projectName = ($name.Trim().ToLowerInvariant() -replace '[^a-z0-9._-]+', '-').Trim([char[]]'.-_')
     if ([string]::IsNullOrWhiteSpace($projectName)) {
         throw 'Project name must contain at least one letter or number.'
     }
 
-    $path = Join-Path $desktop $projectName
+    $path = Join-Path $projectsRoot $projectName
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
-    Set-Location $desktop
+    Set-Location $projectsRoot
     if ($projectName -ne $name) {
         Write-Host "Using project folder name: $projectName" -ForegroundColor DarkGray
     }
@@ -1469,19 +2113,24 @@ function slmn-app {
 
     Set-Location $path
     Open-ProjectEditor $path
-    Invoke-Npm run dev
+    Start-SlmnDevServer
 }
 
 function full-app {
-    param([Parameter(Mandatory)][string]$name)
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    slmn-app $name
+    slmn-app $name -Path $ProjectRoot
 }
 
 # -----------------------------
 # 11. STARTER MENU
 # -----------------------------
 function slmn-starter {
+    param([Alias('Path')][string]$ProjectRoot)
+
     $command = Select-StarterCommand
     Clear-Host
     Write-Host "Selected: $command" -ForegroundColor Cyan
@@ -1490,26 +2139,29 @@ function slmn-starter {
         throw 'A project name is required.'
     }
 
-    & $command $name.Trim()
+    & $command $name.Trim() -Path $ProjectRoot
 }
 
 # -----------------------------
 # 12. INTERACTIVE NEXT.JS
 # -----------------------------
 function next-app {
-    param([Parameter(Mandatory)][string]$name)
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
 
-    $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
-    $path = Join-Path $desktop $name
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $name
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
-    Set-Location $desktop
+    Set-Location $projectsRoot
     npx create-next-app@latest $name
     if ($LASTEXITCODE -ne 0) {
         throw "Next.js setup failed for '$name'."
     }
 
-    Complete-InteractiveProject -Path $path -Stack Next
+    Complete-InteractiveProject -Path $path -Name $name -Stack Next
 }
