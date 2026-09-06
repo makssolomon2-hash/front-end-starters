@@ -8,7 +8,35 @@
 
 # SLMN Frontend Starters
 
-PowerShell commands for creating clean frontend projects on your Desktop. `slmn-app` is the flagship starter: a complete, removable React technology demo. The other commands are focused alternatives for smaller starting points.
+PowerShell commands for creating clean frontend projects in your configured projects folder. Every compatible starter now begins with a removable, full-screen SLMN screen: linked technology cards, a pointer-reactive blue `S` signal, and only the libraries actually used by that project. The layout uses a centered content frame with responsive outer padding. `slmn-app` remains the flagship React, GSAP, and Three.js version with the interactive 3D model.
+
+## Current Release
+
+- Full-screen charcoal start screens across Vanilla, Tailwind, GSAP, React, compatible interactive Vite templates, and Next.js App Router projects.
+- Linked cards list only the project's installed technologies.
+- A responsive, pointer-reactive blue `S` panel replaces the flagship Three.js scene in starters that do not include Three.js.
+- Native CSS provides entrance motion by default. GSAP starters use GSAP for that reveal instead.
+- The full demo remains isolated in clearly named files so it can be removed without untangling application code.
+- Project destination, editor opening, and automatic dev-server startup are controlled through `~\.slmn\config.json`.
+
+
+## Easiest Way to Install
+
+Open Windows Terminal, then press `Win + X` and select `I` or `A`. Run:
+
+```powershell
+notepad $PROFILE
+```
+
+Paste the complete contents of `starters.ps1` into the profile file, then save it.
+
+Restart Windows Terminal, then run:
+
+```powershell
+slmn-starter
+```
+
+Choose a starter from the menu.
 
 ## Quick Start
 
@@ -27,17 +55,17 @@ slmn-starter
 | --- | --- | --- |
 | `slmn-app "my-app"` | Vite, React JavaScript, Tailwind CSS v4, GSAP, Three.js, React Icons | **Flagship:** creates a removable SLMN technology demo with no setup prompts |
 | `slmn-starter` | Starter menu | Choose a starter with arrows/Enter or a displayed number/letter shortcut |
-| `vanilla-project "my-site"` | HTML, CSS, JavaScript | A dark page with one centered heading and linked `js/script.js` |
-| `tailwind-project "my-site"` | Vite, Tailwind CSS v4 | Dark static HTML with a centered heading and custom Tailwind screens |
-| `gsap-project "my-site"` | HTML, CSS, JavaScript, GSAP CDN | One heading with a small entrance animation |
-| `tailwind-gsap-project "my-site"` | Vite, Tailwind CSS v4, GSAP | Dark static HTML with one animated heading |
-| `react-project "my-site"` | Vite, React | Removable React technology preview linking to Vite, React, and JavaScript |
-| `react-tailwind-project "my-site"` | Vite, React, Tailwind CSS v4 | Removable React preview linking to Vite, React, JavaScript, and Tailwind CSS |
-| `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | Removable React preview with GSAP entrance motion and stack-specific links |
-| `react-tailwind-gsap-three-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP, Three.js, React Icons | Full removable React technology demo with the interactive Three.js model (available as a direct command) |
-| `vite-app "my-app"` | Vite | Official Vite prompts, then optional Tailwind CSS, GSAP, and Three.js |
+| `vanilla-project "my-site"` | HTML, CSS, JavaScript | Full-screen native HTML/CSS/JS screen with a pointer-reactive visual |
+| `tailwind-project "my-site"` | Vite, Tailwind CSS v4 | Full-screen Vite screen with Tailwind ready for application code |
+| `gsap-project "my-site"` | HTML, CSS, JavaScript, GSAP CDN | Full-screen screen with a GSAP reveal and pointer-reactive visual |
+| `tailwind-gsap-project "my-site"` | Vite, Tailwind CSS v4, GSAP | Full-screen Tailwind screen with GSAP reveal motion |
+| `react-project "my-site"` | Vite, React | Removable React screen with linked stack cards and `StarterVisual` |
+| `react-tailwind-project "my-site"` | Vite, React, Tailwind CSS v4 | React screen with Tailwind and a removable pointer-reactive visual |
+| `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | React screen with GSAP reveal motion and stack-specific links |
+| `react-tailwind-gsap-three-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP, Three.js, React Icons | Full removable React technology demo with the interactive Three.js model |
+| `vite-app "my-app"` | Vite | Official Vite prompts, optional libraries, then a matching screen for React and vanilla templates |
 | `full-app "my-demo"` | Alias for `slmn-app` | Backwards-compatible name for the flagship starter |
-| `next-app "my-next-app"` | Next.js | Official Create Next App prompts, then optional GSAP and Three.js |
+| `next-app "my-next-app"` | Next.js | Official Create Next App prompts, optional GSAP/Three.js, then a matching App Router screen |
 
 Vite-generated projects are cleaned before VS Code opens. They do not keep the default counter, starter icons, `public` folder, `src/assets`, generated README, or the default React lint setup.
 
@@ -46,6 +74,7 @@ Vite-generated projects are cleaned before VS Code opens. They do not keep the d
 - Windows with PowerShell
 - Node.js LTS and npm for the Vite-based starters
 - VS Code with the `code` command available in `PATH`
+- AutoHotkey v2 only when using global hotkeys
 
 Git is not required. The Vanilla and GSAP starters do not require npm.
 
@@ -84,41 +113,58 @@ The last command must return `True`. Then load the functions into the current Po
 . .\starters.ps1
 ```
 
-The leading `.` is important: it dot-sources the script, making the starter commands available in the current terminal. A ZIP downloaded from the internet can be blocked by Windows; unblock it first when needed:
+The leading `.` is important: it dot-sources the script, making the starter commands available in the current terminal. See **Installation Recovery** when Windows blocks a downloaded script or your shell blocks local scripts.
+
+### Fastest Manual Install: `$PROFILE`
+
+From the repository folder, paste this complete block into PowerShell once. It creates your **Current User, All Hosts** profile when needed and adds the current checkout as a single loader line:
 
 ```powershell
-Unblock-File .\starters.ps1
+$profilePath = $PROFILE.CurrentUserAllHosts
+New-Item -ItemType Directory -Path (Split-Path -Parent $profilePath) -Force | Out-Null
+New-Item -ItemType File -Path $profilePath -Force | Out-Null
+$startersPath = (Resolve-Path .\starters.ps1).Path
+$loader = ". `"$startersPath`""
+if (-not (Select-String -LiteralPath $profilePath -SimpleMatch $loader -Quiet)) {
+  Add-Content -LiteralPath $profilePath -Value $loader
+}
 ```
 
-If PowerShell blocks local scripts for the current terminal only, run this first:
+Close and reopen PowerShell, then verify the command is available:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-. .\starters.ps1
+Get-Command slmn-starter
 ```
 
-### Install For Every New Terminal
+`$PROFILE` points to PowerShell profile scripts. This uses the All Hosts profile because it loads in normal PowerShell, Windows Terminal, and VS Code terminals. Keep this repository in a location you will not move; after pulling updates, opening a new terminal loads the updated script automatically.
 
-From the folder containing `starters.ps1`, load the script once, then install it:
+The profile contains only the loader line, not a copied `starters.ps1`. Keeping the script in the repository makes updates and hotkey installation work normally.
+
+### Managed Install: `~\.slmn`
+
+When you want a self-contained installation that continues to work after you move or remove the checkout, run:
 
 ```powershell
 . .\starters.ps1
 slmn-install
 ```
 
-`slmn-install` copies the tool to `~\.slmn\starters.ps1`, creates `~\.slmn\config.json`, creates the **Current User, All Hosts** PowerShell profile when needed, and keeps one clean load line in that profile:
+`slmn-install` copies the tool to `~\.slmn\starters.ps1`, creates `~\.slmn\config.json`, and replaces any existing SLMN loader with this one clean All Hosts profile line:
 
 ```powershell
 . "$env:USERPROFILE\.slmn\starters.ps1"
 ```
 
-The All Hosts profile is preferred over the host-specific `$PROFILE` because it loads in normal PowerShell, Windows Terminal, and VS Code terminals. Close and reopen PowerShell, then verify it:
+To update the managed copy after getting a newer repository version, load that newer `starters.ps1` and run `slmn-update`. Updates affect projects created after the update; a project already generated keeps its own files and does not change automatically. To remove the managed profile loader while retaining `~\.slmn` and its configuration, run `slmn-uninstall`.
+
+### Installation Recovery
+
+If a downloaded ZIP is blocked by Windows, run `Unblock-File .\starters.ps1` before the install command. If your current shell blocks local scripts, use this session-only setting, then load the script again:
 
 ```powershell
-Get-Command slmn-starter
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+. .\starters.ps1
 ```
-
-To update after pulling or downloading a newer copy, load that newer `starters.ps1` and run `slmn-update`. To stop automatic loading while keeping your configuration and installed files, run `slmn-uninstall`.
 
 ## Configuration
 
@@ -158,13 +204,102 @@ Set `openInVSCode` or `autoStartDev` to `false` in the config file when you pref
 
 ## Global Hotkeys
 
-Install [AutoHotkey v2](https://www.autohotkey.com/) and ensure `AutoHotkey.exe` is available in `PATH`, then run:
+SLMN hotkeys work anywhere in Windows through an AutoHotkey v2 script. They open a new PowerShell window and load the managed SLMN copy at `~\.slmn\starters.ps1`; they do not depend on the folder currently open in File Explorer or VS Code.
+
+### Install Hotkeys
+
+1. Install the managed SLMN copy. This is required even when you use the manual `$PROFILE` installation, because the hotkey script loads `~\.slmn\starters.ps1`:
+
+```powershell
+. .\starters.ps1
+slmn-install
+```
+
+2. Install [AutoHotkey v2](https://www.autohotkey.com/). Winget is the simplest option:
+
+```powershell
+winget install --id AutoHotkey.AutoHotkey --exact --source winget
+```
+
+3. Close and reopen PowerShell, then enable the SLMN bindings:
 
 ```powershell
 slmn-install-hotkeys
 ```
 
-This installs `~\.slmn\slmn-hotkeys.ahk`, starts it immediately, and adds it to your Windows Startup folder. `Ctrl + Alt + S` opens `slmn-starter`; `Ctrl + Alt + A` prompts for a project name and creates the flagship `slmn-app`. Remove the startup registration and script with `slmn-uninstall-hotkeys`.
+`slmn-install-hotkeys` copies the AutoHotkey script to `~\.slmn\slmn-hotkeys.ahk`, starts it immediately, and creates `SLMN Hotkeys.lnk` in your Windows Startup folder. The hotkeys therefore return automatically after you sign in.
+
+### Hotkey Reference
+
+| Shortcut | What happens |
+| --- | --- |
+| `Ctrl + Alt + S` | Opens a new PowerShell window with the interactive `slmn-starter` menu. Use arrow keys and Enter, or type one of the menu shortcuts: `1`/`v`, `2`/`t`, `3`/`g`, `4`/`tg`, `5`/`r`, `6`/`rt`, `7`/`rtg`, `8`/`a`, `9`/`vite`, or `0`/`next`. Then enter the project name. |
+| `Ctrl + Alt + A` | Opens a new PowerShell window, asks for a project name, then runs the flagship `slmn-app` starter. |
+
+Both shortcuts create projects in the configured `projectsPath`, not the terminal's current folder. Set that destination with `slmn-config path "D:\Projects"` or use `slmn-config path desktop` to restore the Desktop default.
+
+### Verify And Refresh
+
+After installation, press `Ctrl + Alt + S`. A PowerShell window headed `SLMN Starter` confirms that the bindings are active. You can also check that AutoHotkey is running:
+
+```powershell
+Get-Process AutoHotkey64, AutoHotkey -ErrorAction SilentlyContinue
+```
+
+After pulling a newer version of this repository, refresh the managed SLMN copy before using the hotkeys:
+
+```powershell
+. .\starters.ps1
+slmn-update
+slmn-install-hotkeys
+```
+
+The final command restarts the binding with the current `slmn-hotkeys.ahk` file. New hotkey-created projects then use the updated generator; projects created earlier keep the files they already have.
+
+### Hotkey Troubleshooting
+
+**`AutoHotkey v2 was not found`**
+
+Install AutoHotkey v2 with the Winget command above, then close and reopen PowerShell before running `slmn-install-hotkeys`. The SLMN installer detects both `PATH` installs and AutoHotkey's standard `C:\Program Files\AutoHotkey\v2` location.
+
+**A hotkey opens PowerShell, but `slmn-starter` is not recognized**
+
+Run the managed install from the repository folder, then reinstall the hotkeys:
+
+```powershell
+. .\starters.ps1
+slmn-install
+slmn-install-hotkeys
+```
+
+**The shortcut creates an older-looking project**
+
+Refresh the installed copy and create a new project with a new name. Starters generate files once; they do not restyle an existing project:
+
+```powershell
+. .\starters.ps1
+slmn-update
+slmn-install-hotkeys
+```
+
+**The shortcut does nothing**
+
+Another application may reserve the key combination, or the AutoHotkey process may have stopped. First reinstall the bindings:
+
+```powershell
+slmn-uninstall-hotkeys
+slmn-install-hotkeys
+```
+
+If you are using an elevated application, Windows may block a non-elevated AutoHotkey process from receiving its input. Test the shortcut from a normal desktop application or terminal.
+
+### Remove Hotkeys
+
+To stop the currently running AutoHotkey process, delete the Startup shortcut, and remove the installed hotkey script:
+
+```powershell
+slmn-uninstall-hotkeys
+```
 
 ## Create A Project
 
@@ -187,21 +322,21 @@ next-app "my-next-app"
 
 `slmn-starter` shows the primary starters in one menu. Use the Up and Down arrow keys and Enter, or type a shortcut: `1`/`v`, `2`/`t`, `3`/`g`, `4`/`tg`, `5`/`r`, `6`/`rt`, `7`/`rtg`, `8`/`a`, `9`/`vite`, or `0`/`next`. Choosing `SLMN App` creates its React JavaScript project without further setup questions. Its project name is converted to a lowercase npm-safe folder name, so `APPP` becomes `appp`. Choosing Vite opens its normal framework and variant selector next.
 
-Projects are created at the configured `projectsPath` (Desktop by default), or at a command's temporary `-Path` override. Vite-based starters scaffold, install npm packages, replace the default files, and then open the finished project in VS Code. Every React starter starts `npm run dev` automatically after the project is ready unless `autoStartDev` is disabled.
+Projects are created at the configured `projectsPath` (Desktop by default), or at a command's temporary `-Path` override. Vite-based starters scaffold, install npm packages, replace their default files, and then open the finished project in VS Code. `autoStartDev` controls whether the generated project starts `npm run dev` automatically.
 
 The Vanilla starter can be opened directly in a browser or served with your preferred local server. The GSAP starter loads GSAP from a CDN, so its first animation requires an internet connection.
 
-`vite-app` and `next-app` switch to your Desktop and start Vite's or Next.js's normal interactive command. Once the official CLI finishes, `vite-app` asks whether to add Tailwind CSS, GSAP, and Three.js; it configures Tailwind when selected. Create Next App already asks about Tailwind during its own setup, so `next-app` only asks whether to add GSAP and Three.js afterward. Each command installs only the features you select, opens the finished project in VS Code, and starts `npm run dev` in the current terminal. Git behavior follows the official CLI you choose.
+`vite-app` and `next-app` use the configured projects folder and start Vite's or Next.js's normal interactive command. Once the official CLI finishes, `vite-app` asks whether to add Tailwind CSS, GSAP, and Three.js; it configures Tailwind when selected. Create Next App already asks about Tailwind during its own setup, so `next-app` only asks whether to add GSAP and Three.js afterward. Each command installs only the features you select, opens the finished project in VS Code, and starts `npm run dev` unless `autoStartDev` is disabled. Git behavior follows the official CLI you choose.
 
 Feature questions use uppercase `[Y/N]` prompts. Press `Y` or `N` once; no Enter key is needed.
 
 For `vite-app`, choose the framework and variant in Vite's normal prompts. The launcher uses Vite's `--no-immediate` option, then installs your selected features and starts the server after setup. For `next-app`, answer Create Next App's normal prompts; its package installation completes before the two feature questions appear.
 
-`slmn-app` is the primary starter. It converts the entered project name to a lowercase npm-safe folder name, then creates a React JavaScript Vite project without framework, variant, package-name, or Create Vite installation questions. It automatically installs Tailwind CSS, GSAP, Three.js, and React Icons, then replaces Vite's default React page with a dark SLMN technology preview: Tailwind controls the responsive layout, GSAP animates the header, and Three.js renders a mouse-controlled WebGL model. It then opens VS Code and starts the development server. `full-app` remains available as an alias.
+`slmn-app` is the primary starter. It converts the entered project name to a lowercase npm-safe folder name, then creates a React JavaScript Vite project without framework, variant, package-name, or Create Vite installation questions. It automatically installs Tailwind CSS, GSAP, Three.js, and React Icons, then replaces Vite's default React page with a dark full-screen SLMN demo: linked technology cards on the left and a mouse-controlled WebGL model on the right. It then opens VS Code and starts the development server when `autoStartDev` is enabled. `full-app` remains available as an alias.
 
 ## Share With Others
 
-Share the whole `STARTER` folder, including `starters.ps1` and `README.md`. The recipient can place it anywhere, open PowerShell in that folder, and follow the **Install** section above.
+Share the whole `front-end-starters` folder, including `starters.ps1`, `slmn-hotkeys.ahk`, and `README.md`. The recipient can place it anywhere, open PowerShell in that folder, and follow the **Install** section above.
 
 For GitHub, create a repository, commit these two files, and share the repository URL. A recipient can then run:
 
@@ -213,17 +348,23 @@ cd front-end-starters
 
 They need Node.js, npm, and optionally the VS Code `code` command installed as described in **Requirements**.
 
-Every starter opens on the same charcoal SLMN start screen with pills for only the tools included in that starter. Vanilla and GSAP screens are self-contained in `index.html`, `css/style.css`, and `js/script.js`; Tailwind and Tailwind + GSAP screens use `index.html`, `src/style.css`, and `src/script.js`. Delete or replace those files to remove the static screen. Interactive Vite React and vanilla templates receive these same file layouts after their dependency choices are complete. React previews are split into removable files: `src/App.*` is a small composition root, `src/components/Hero.*` owns the header and optional GSAP animation, `src/components/TechPill.*` owns the stack-specific technology links, and `src/styles/demo.css` contains preview-specific styles. The React + Tailwind + GSAP + Three.js starter and `slmn-app` additionally include `src/components/three/ThreeScene.*`. Cards link only to tools installed by that starter and open their official sites or primary documentation in a new browser tab.
+## Start Screens And Removal
 
-The App Router version of the Next.js starter keeps its removable screen in `app/page.*` (or `src/app/page.*`), `components/SlmnStartScreen.*` (or `src/components/SlmnStartScreen.*`), and `app/slmn-start.module.css` (or `src/app/slmn-start.module.css`). Delete or replace those three files to remove it. Vite templates using a different framework remain on that framework's official initial screen so the starter does not overwrite its framework-specific entry code.
+Every compatible starter begins with the same charcoal full-screen composition: project copy and technology links alongside a blue `S` signal display. The display follows pointer movement with native browser events; it is not a Three.js scene. GSAP-enabled starters use GSAP for the entrance reveal, while the rest use CSS-only motion. The flagship and full Three.js starter use their WebGL visual instead.
 
-To replace the preview with your application:
+Each technology card links to its official documentation and is rendered only when that technology belongs to the project.
 
-1. In `src/App.*`, remove the `Hero` and `demo.css` imports.
-2. Replace `<Hero />` inside `<main className="app-shell">` with your own components.
-3. Delete `src/components/Hero.jsx`, `src/components/TechPill.jsx`, and `src/styles/demo.css`. Delete `src/components/three` for the Three.js starter as well.
-4. Keep `src/styles/app.css`; it provides the permanent application shell.
-5. Run `npm uninstall gsap`, `npm uninstall three react-icons`, or both when you do not plan to use those preview-only packages.
+**Vanilla and GSAP:** delete the `js/slmn-start` directory to remove the whole preview. The initially hidden screen stays blank when its startup files are gone, ready for your own markup.
+
+**Tailwind and Tailwind + GSAP:** delete the `src/slmn-start` directory to remove the whole preview. The guarded loader in `index.html` then leaves a blank, buildable page ready for your own markup.
+
+**React, React + Tailwind, and React + Tailwind + GSAP:** replace `src/App.*`, then delete `src/components/Hero.*`, `src/components/TechPill.*`, `src/components/StarterVisual.*`, and `src/styles/demo.css`. `src/styles/app.css` only supplies the root minimum height and can be kept or deleted with the screen.
+
+**`slmn-app` and React + Tailwind + GSAP + Three.js:** replace `src/App.*`, then delete `src/components/Hero.*`, `src/components/TechPill.*`, `src/components/three/ThreeScene.*`, `src/styles/app.css`, and `src/styles/demo.css`. Uninstall `gsap`, `three`, and `react-icons` when those libraries are no longer needed.
+
+**Next.js App Router:** replace `app/page.*` or `src/app/page.*`, then delete `components/SlmnStartScreen.*` or `src/components/SlmnStartScreen.*` and `app/slmn-start.css` or `src/app/slmn-start.css`.
+
+Interactive Vite applies the matching screen to vanilla, React, and React TypeScript templates once setup is complete. Other Vite frameworks keep their official starter page so framework-specific entry code is not overwritten.
 
 ## Responsive Screens
 
@@ -243,13 +384,12 @@ Vanilla, GSAP, and React generate matching mobile-first CSS media queries at the
 
 The goal is a clean place to begin, not a sample app:
 
-- Every starter begins with a modern charcoal `#171717` background and white text. There is no light/dark toggle.
-- Vanilla and GSAP use only an HTML entry point, CSS, and linked JavaScript. Their start screens live in `index.html`, `css/style.css`, and `js/script.js`.
-- Tailwind and Tailwind + GSAP keep their start screens in `index.html`, `src/style.css`, and `src/script.js`; GSAP animates only the GSAP-enabled variant.
-- Every React starter uses a small `App.jsx` composition root and places its removable preview in `src/components/Hero.jsx`, `src/components/TechPill.jsx`, and `src/styles/demo.css`. Each preview lists links only for tools installed by that starter.
-- React + Tailwind + GSAP + Three.js uses the richer `ThreeScene` component from the flagship demo.
-- The full React demo keeps `App` intentionally small and places the Three.js preview in `src/components/three/ThreeScene.*`; moving the pointer over its canvas rotates the model.
-- JavaScript and React entries log `Page loaded` in the browser console.
+- Every compatible screen uses a charcoal `#171717` full-height layout without a capped outer container, linked technology cards, and a pointer-reactive blue `S` visual without adding Three.js where it was not requested.
+- Vanilla and GSAP keep all preview assets in `js/slmn-start`. Tailwind and Tailwind + GSAP keep them in `src/slmn-start`. Deleting either directory removes the preview without breaking the project entry page; the Vite entry uses a guarded loader and the plain HTML entry begins hidden until its startup script runs.
+- React screens use `src/App.*` as a small composition root and keep the full demo in `src/components/Hero.*`, `src/components/TechPill.*`, `src/components/StarterVisual.*`, and `src/styles/demo.css`.
+- GSAP controls the screen entrance only in starters that install it; all other screen motion is native CSS and browser events.
+- React + Tailwind + GSAP + Three.js and `slmn-app` use the richer `src/components/three/ThreeScene.*` WebGL visual instead of `StarterVisual`.
+- Next.js App Router screens use `app/page.*` or `src/app/page.*`, the matching `components/SlmnStartScreen.*`, and `slmn-start.css` inside the App Router directory.
 
 ## Troubleshooting
 

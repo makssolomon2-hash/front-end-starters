@@ -208,9 +208,18 @@ function slmn-install-hotkeys {
         throw "slmn-hotkeys.ahk was not found next to starters.ps1: $sourcePath"
     }
 
-    $autoHotkey = Get-Command AutoHotkey.exe, AutoHotkey64.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $autoHotkey) {
-        throw 'AutoHotkey v2 was not found in PATH. Install it from https://www.autohotkey.com/ and run slmn-install-hotkeys again.'
+    $autoHotkeyCommand = Get-Command AutoHotkey64.exe, AutoHotkey.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    $autoHotkeyPath = if ($autoHotkeyCommand) {
+        $autoHotkeyCommand.Source
+    } else {
+        @(
+            (Join-Path $env:ProgramFiles 'AutoHotkey\v2\AutoHotkey64.exe'),
+            (Join-Path $env:ProgramFiles 'AutoHotkey\v2\AutoHotkey.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'AutoHotkey\v2\AutoHotkey.exe')
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    }
+    if (-not $autoHotkeyPath) {
+        throw 'AutoHotkey v2 was not found. Install it from https://www.autohotkey.com/ and run slmn-install-hotkeys again.'
     }
 
     $hotkeysPath = Get-SlmnHotkeysPath
@@ -219,12 +228,12 @@ function slmn-install-hotkeys {
 
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut((Get-SlmnHotkeysStartupShortcutPath))
-    $shortcut.TargetPath = $autoHotkey.Source
+    $shortcut.TargetPath = $autoHotkeyPath
     $shortcut.Arguments = '"' + $hotkeysPath + '"'
     $shortcut.WorkingDirectory = Get-SlmnInstallDirectory
     $shortcut.Save()
 
-    Start-Process -FilePath $autoHotkey.Source -ArgumentList ('"' + $hotkeysPath + '"')
+    Start-Process -FilePath $autoHotkeyPath -ArgumentList ('"' + $hotkeysPath + '"')
     Write-Host 'SLMN hotkeys installed and started. They will load automatically when you sign in.' -ForegroundColor Green
 }
 
@@ -317,6 +326,29 @@ button:hover {
 '@
 }
 
+function Get-SlmnTechnologyInfo {
+    param([string]$Name)
+
+    $technologyMap = @{
+        'HTML' = @{ Detail = 'Markup'; Href = 'https://developer.mozilla.org/docs/Web/HTML' }
+        'CSS' = @{ Detail = 'Styling'; Href = 'https://developer.mozilla.org/docs/Web/CSS' }
+        'JavaScript' = @{ Detail = 'Language'; Href = 'https://developer.mozilla.org/docs/Web/JavaScript' }
+        'TypeScript' = @{ Detail = 'Language'; Href = 'https://www.typescriptlang.org/' }
+        'Vite' = @{ Detail = 'Build tooling'; Href = 'https://vite.dev/' }
+        'React' = @{ Detail = 'UI library'; Href = 'https://react.dev/' }
+        'Next.js' = @{ Detail = 'React framework'; Href = 'https://nextjs.org/' }
+        'Tailwind CSS' = @{ Detail = 'Utility styling'; Href = 'https://tailwindcss.com/' }
+        'GSAP' = @{ Detail = 'Motion library'; Href = 'https://gsap.com/' }
+        'Three.js' = @{ Detail = '3D library'; Href = 'https://threejs.org/' }
+    }
+    $technology = $technologyMap[$Name]
+    if (-not $technology) {
+        return [pscustomobject]@{ Name = $Name; Detail = 'Project tool'; Href = '#' }
+    }
+
+    return [pscustomobject]@{ Name = $Name; Detail = $technology.Detail; Href = $technology.Href }
+}
+
 function Set-StaticStarterScreen {
     param(
         [string]$Path,
@@ -326,10 +358,22 @@ function Set-StaticStarterScreen {
         [switch]$UseGsap
     )
 
-    $technologyPills = ($Technologies | ForEach-Object { "        <span class=`"slmn-tech-pill`">$_</span>" }) -join "`n"
-    $scriptTag = if ($UseVite) { '<script type="module" src="/src/script.js"></script>' } else { '<script src="./js/script.js"></script>' }
+    $technologyCards = ($Technologies | ForEach-Object {
+        $technology = Get-SlmnTechnologyInfo $_
+@"
+                    <a class="slmn-tech-card" href="$($technology.Href)" target="_blank" rel="noreferrer">
+                        <span class="slmn-tech-mark" aria-hidden="true">$($technology.Name.Substring(0, 1))</span>
+                        <span>
+                            <span class="slmn-tech-name">$($technology.Name)</span>
+                            <span class="slmn-tech-detail">$($technology.Detail)</span>
+                        </span>
+                    </a>
+"@
+    }) -join "`n"
+    $scriptTag = if ($UseVite) { '<script type="module">import("/src/slmn-start/main.js" /* @vite-ignore */).catch(() => {})</script>' } else { '<script src="./js/slmn-start/main.js" defer></script>' }
+    $stylesheetLink = if ($UseVite) { '' } else { '    <link rel="stylesheet" href="./js/slmn-start/style.css">' }
     $gsapScript = if ($UseGsap -and -not $UseVite) { '    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>' } else { '' }
-    $stylesheetHref = if ($UseVite) { '/src/style.css' } else { './css/style.css' }
+    $screenClass = if ($UseGsap) { 'slmn-start slmn-use-gsap' } else { 'slmn-start' }
 
     @"
 <!doctype html>
@@ -338,16 +382,30 @@ function Set-StaticStarterScreen {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>$Name</title>
-    <link rel="stylesheet" href="$stylesheetHref">
+$stylesheetLink
 </head>
 <body>
-    <main class="slmn-start">
+    <main class="$screenClass" hidden>
         <section class="slmn-screen">
-            <p class="slmn-kicker" data-slmn-reveal>SLMN Starter</p>
-            <h1 data-slmn-reveal>Ready to build.</h1>
-            <p class="slmn-project" data-slmn-reveal>$Name</p>
-            <div class="slmn-tech-list" data-slmn-reveal>
-$technologyPills
+            <div class="slmn-copy">
+                <p class="slmn-kicker" data-slmn-reveal>SLMN Starter</p>
+                <h1 data-slmn-reveal>Build what is next.</h1>
+                <p class="slmn-project" data-slmn-reveal>$Name</p>
+                <p class="slmn-description" data-slmn-reveal>A clear starting point, shaped for this project's actual stack.</p>
+                <div class="slmn-tech-list" data-slmn-reveal>
+$technologyCards
+                </div>
+            </div>
+            <div class="slmn-visual" data-slmn-visual data-slmn-reveal aria-hidden="true">
+                <span class="slmn-visual-grid"></span>
+                <div class="slmn-visual-signal">
+                    <span class="slmn-visual-core">S</span>
+                    <span class="slmn-visual-node slmn-visual-node-one"></span>
+                    <span class="slmn-visual-node slmn-visual-node-two"></span>
+                    <span class="slmn-visual-node slmn-visual-node-three"></span>
+                </div>
+                <span class="slmn-visual-scan"></span>
+                <span class="slmn-visual-caption">SLMN / 01</span>
             </div>
         </section>
     </main>
@@ -365,7 +423,7 @@ $gsapScript
 :root {
     color: #ffffff;
     background: #171717;
-    font-family: "Segoe UI", sans-serif;
+    font-family: "Aptos", "Segoe UI", sans-serif;
 }
 
 body {
@@ -376,8 +434,8 @@ body {
 
 .slmn-start {
     display: grid;
-    min-height: 100vh;
-    padding: 1.5rem;
+    min-height: 100svh;
+    padding: clamp(1rem, 2.5vw, 2rem);
     place-items: center;
     background-color: #171717;
     background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
@@ -385,7 +443,16 @@ body {
 }
 
 .slmn-screen {
-    width: min(100%, 56rem);
+    display: grid;
+    width: min(100%, 72rem);
+    min-height: min(48rem, calc(100svh - 2rem));
+    padding: 0;
+    align-items: center;
+    gap: 2.5rem;
+}
+
+.slmn-copy {
+    max-width: 38rem;
 }
 
 .slmn-kicker {
@@ -398,9 +465,8 @@ body {
 }
 
 .slmn-screen h1 {
-    max-width: 42rem;
     margin: 0;
-    font-size: clamp(2.5rem, 7vw, 4.75rem);
+    font-size: 3rem;
     font-weight: 600;
     line-height: 1.1;
 }
@@ -408,65 +474,260 @@ body {
 .slmn-project {
     margin: 1.25rem 0 0;
     color: #d4d4d4;
-    font-size: clamp(1rem, 3vw, 1.25rem);
+    font-size: 1.125rem;
+}
+
+.slmn-description {
+    max-width: 32rem;
+    margin: 0.75rem 0 0;
+    color: #a3a3a3;
+    font-size: 1rem;
+    line-height: 1.65;
 }
 
 .slmn-tech-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.625rem;
-    margin-top: 2rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 2.25rem;
 }
 
-.slmn-tech-pill {
-    padding: 0.625rem 0.875rem;
-    color: #dbeafe;
+.slmn-tech-card {
+    display: flex;
+    min-height: 5rem;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.875rem;
+    color: #ffffff;
     font-size: 0.875rem;
-    font-weight: 600;
-    background: rgb(96 165 250 / 0.14);
-    border: 1px solid rgb(147 197 253 / 0.34);
+    text-decoration: none;
+    background: rgb(255 255 255 / 0.045);
+    border: 1px solid rgb(255 255 255 / 0.1);
+    transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.slmn-tech-card:hover {
+    background: rgb(255 255 255 / 0.09);
+    border-color: rgb(125 211 252 / 0.72);
+    transform: translateY(-2px);
+}
+
+.slmn-tech-card:focus-visible {
+    outline: 2px solid #7dd3fc;
+    outline-offset: 3px;
+}
+
+.slmn-tech-mark {
+    display: grid;
+    width: 1.8rem;
+    height: 1.8rem;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #bae6fd;
+    font-weight: 700;
+    background: #0c4a6e;
+}
+
+.slmn-tech-name,
+.slmn-tech-detail {
+    display: block;
+}
+
+.slmn-tech-name {
+    font-weight: 650;
+}
+
+.slmn-tech-detail {
+    margin-top: 0.2rem;
+    color: #a3a3a3;
+    font-size: 0.75rem;
+}
+
+.slmn-visual {
+    --slmn-pointer-x: 0px;
+    --slmn-pointer-y: 0px;
+    position: relative;
+    min-height: 22rem;
+    overflow: hidden;
+    isolation: isolate;
+    background: #1d2329;
+    border: 1px solid rgb(255 255 255 / 0.11);
+}
+
+.slmn-visual-grid {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(#26313a 1px, transparent 1px), linear-gradient(90deg, #26313a 1px, transparent 1px);
+    background-size: 2rem 2rem;
+    opacity: 0.85;
+}
+
+.slmn-visual-signal {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 15rem;
+    height: 15rem;
+    transform: translate(calc(-50% + var(--slmn-pointer-x)), calc(-50% + var(--slmn-pointer-y)));
+    transition: transform 180ms ease-out;
+}
+
+.slmn-visual-core,
+.slmn-visual-node {
+    position: absolute;
+    display: block;
+}
+
+.slmn-visual-core {
+    top: 50%;
+    left: 50%;
+    width: 5rem;
+    height: 5rem;
+    display: grid;
+    place-items: center;
+    color: #38bdf8;
+    font-family: "Aptos", "Segoe UI", sans-serif;
+    font-size: 5.25rem;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: 0 0 1.5rem rgb(56 189 248 / 0.82);
+    transform: translate(-50%, -50%);
+    animation: slmn-core-pulse 2.8s ease-in-out infinite;
+}
+
+.slmn-visual-node {
+    width: 0.75rem;
+    height: 0.75rem;
+    background: #f0f9ff;
+    box-shadow: 0 0 1rem rgb(125 211 252 / 0.9);
+}
+
+.slmn-visual-node-one {
+    top: 1.4rem;
+    left: 2.1rem;
+}
+
+.slmn-visual-node-two {
+    right: 1.8rem;
+    bottom: 2.75rem;
+}
+
+.slmn-visual-node-three {
+    top: 50%;
+    right: -0.375rem;
+}
+
+.slmn-visual-scan {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: #7dd3fc;
+    box-shadow: 0 0 1rem #38bdf8;
+    animation: slmn-scan 4.5s ease-in-out infinite;
+}
+
+.slmn-visual-caption {
+    position: absolute;
+    right: 1rem;
+    bottom: 0.875rem;
+    color: #bae6fd;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+}
+
+[data-slmn-reveal] {
+    animation: slmn-reveal 650ms both;
+}
+
+.slmn-use-gsap [data-slmn-reveal] {
+    animation: none;
+}
+
+@keyframes slmn-reveal {
+    from { opacity: 0; transform: translateY(1rem); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slmn-core-pulse {
+    50% { opacity: 0.72; text-shadow: 0 0 2.25rem rgb(56 189 248 / 0.98); }
+}
+
+@keyframes slmn-scan {
+    50% { transform: translateY(22rem); }
 }
 
 @media (min-width: 48rem) {
-    .slmn-start {
-        padding: 2.5rem;
+    .slmn-screen h1 {
+        font-size: 4.5rem;
+    }
+}
+
+@media (min-width: 64rem) {
+    .slmn-screen {
+        grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.85fr);
+        gap: 4rem;
+    }
+
+    .slmn-visual {
+        min-height: 30rem;
+    }
+
+    @keyframes slmn-scan {
+        50% { transform: translateY(30rem); }
     }
 }
 '@ | ForEach-Object {
-        $stylesheetPath = Join-Path $Path $(if ($UseVite) { 'src/style.css' } else { 'css/style.css' })
+        $startDirectory = Join-Path $Path $(if ($UseVite) { 'src/slmn-start' } else { 'js/slmn-start' })
+        $stylesheetPath = Join-Path $startDirectory 'style.css'
         New-Item -ItemType Directory -Path (Split-Path -Parent $stylesheetPath) -Force | Out-Null
         Set-Content -LiteralPath $stylesheetPath -Value $_ -Encoding utf8
     }
 
-    $scriptPath = Join-Path $Path $(if ($UseVite) { 'src/script.js' } else { 'js/script.js' })
+    $scriptPath = Join-Path $startDirectory 'main.js'
     New-Item -ItemType Directory -Path (Split-Path -Parent $scriptPath) -Force | Out-Null
-    $script = if ($UseGsap -and $UseVite) {
-@'
-import './style.css'
-import gsap from 'gsap'
+    $screenReveal = @'
+const screen = document.querySelector('.slmn-start')
 
-gsap.from('[data-slmn-reveal]', {
-    y: 18,
-    opacity: 0,
-    duration: 0.55,
-    stagger: 0.1,
-    ease: 'power2.out',
-})
+if (screen) {
+    screen.hidden = false
+}
 '@
-    } elseif ($UseGsap) {
-@'
-gsap.from('[data-slmn-reveal]', {
-    y: 18,
-    opacity: 0,
-    duration: 0.55,
-    stagger: 0.1,
-    ease: 'power2.out',
-})
-'@
-    } elseif ($UseVite) {
+    $styleLoader = if ($UseVite) {
         "import './style.css'`n"
     } else {
-        "console.log('Page loaded')`n"
+        ''
+    }
+    $pointerMotion = @'
+const visual = document.querySelector('[data-slmn-visual]')
+
+if (visual) {
+    const resetPointer = () => {
+        visual.style.setProperty('--slmn-pointer-x', '0px')
+        visual.style.setProperty('--slmn-pointer-y', '0px')
+    }
+
+    visual.addEventListener('pointermove', (event) => {
+        const bounds = visual.getBoundingClientRect()
+        const pointerX = Math.round(((event.clientX - bounds.left) / bounds.width - 0.5) * 22)
+        const pointerY = Math.round(((event.clientY - bounds.top) / bounds.height - 0.5) * 22)
+        visual.style.setProperty('--slmn-pointer-x', `${pointerX}px`)
+        visual.style.setProperty('--slmn-pointer-y', `${pointerY}px`)
+    })
+
+    visual.addEventListener('pointerleave', resetPointer)
+}
+'@
+    $script = if ($UseGsap -and $UseVite) {
+"$styleLoader`nimport gsap from 'gsap'`n`n$screenReveal`ngsap.from('[data-slmn-reveal]', {`n    y: 18,`n    opacity: 0,`n    duration: 0.55,`n    stagger: 0.1,`n    ease: 'power2.out',`n})`n" + $pointerMotion
+    } elseif ($UseGsap) {
+"$styleLoader`n$screenReveal`ngsap.from('[data-slmn-reveal]', {`n    y: 18,`n    opacity: 0,`n    duration: 0.55,`n    stagger: 0.1,`n    ease: 'power2.out',`n})`n" + $pointerMotion
+    } elseif ($UseVite) {
+        "$styleLoader`n$screenReveal`n$pointerMotion"
+    } else {
+        "$styleLoader`n$screenReveal`n$pointerMotion`nconsole.log('Page loaded')`n"
     }
     Set-Content -LiteralPath $scriptPath -Value $script -Encoding utf8
 }
@@ -1123,8 +1384,9 @@ function Set-ReactStarterDemo {
     $headerRef = if ($IncludeGsap) { ' ref={heroRef}' } else { '' }
     $titleRef = if ($IncludeGsap) { ' ref={titleRef}' } else { '' }
     $description = if ($IncludeGsap) { 'A removable preview for React with a focused GSAP entrance animation.' } elseif ($IncludeTailwind) { 'A removable preview for React with Tailwind CSS ready for your application.' } else { 'A removable preview for a clean React application.' }
+    $shellClass = if ($IncludeGsap) { 'demo-shell demo-use-gsap' } else { 'demo-shell' }
 
-    @'
+    @"
 import Hero from './components/Hero.$componentExtension'
 import './styles/app.css'
 import './styles/demo.css'
@@ -1136,11 +1398,12 @@ export default function App() {
         </main>
     )
 }
-'@ | Set-Content -LiteralPath $appPath -Encoding utf8
+"@ | Set-Content -LiteralPath $appPath -Encoding utf8
 
     @"
 $gsapImports
 import TechPill from './TechPill.$componentExtension'
+import StarterVisual from './StarterVisual.$componentExtension'
 
 const technologies = [
 $technologyItems]
@@ -1148,7 +1411,7 @@ $technologyItems]
 export default function Hero() {
 $heroReference$animation
     return (
-        <section className="demo-shell">
+        <section className="$shellClass">
             <header$headerRef className="demo-grid">
                 <div className="demo-copy">
                     <p data-demo-reveal className="demo-eyebrow">SLMN React Starter</p>
@@ -1165,6 +1428,7 @@ $heroReference$animation
                         Each card opens its official site in a new tab.
                     </p>
                 </div>
+                <StarterVisual />
             </header>
         </section>
     )
@@ -1191,6 +1455,39 @@ export default function TechPill({ name, detail, href }$techPillProps) {
 "@ | Set-Content -LiteralPath (Join-Path $componentsPath "TechPill.$componentExtension") -Encoding utf8
 
     @'
+export default function StarterVisual() {
+    return (
+        <div
+            className="demo-visual"
+            data-demo-reveal
+            aria-hidden="true"
+            onPointerMove={(event) => {
+                const bounds = event.currentTarget.getBoundingClientRect()
+                const pointerX = Math.round(((event.clientX - bounds.left) / bounds.width - 0.5) * 22)
+                const pointerY = Math.round(((event.clientY - bounds.top) / bounds.height - 0.5) * 22)
+                event.currentTarget.style.setProperty('--demo-pointer-x', `${pointerX}px`)
+                event.currentTarget.style.setProperty('--demo-pointer-y', `${pointerY}px`)
+            }}
+            onPointerLeave={(event) => {
+                event.currentTarget.style.setProperty('--demo-pointer-x', '0px')
+                event.currentTarget.style.setProperty('--demo-pointer-y', '0px')
+            }}
+        >
+            <span className="demo-visual-grid" />
+            <div className="demo-visual-signal">
+                <span className="demo-visual-core">S</span>
+                <span className="demo-visual-node demo-visual-node-one" />
+                <span className="demo-visual-node demo-visual-node-two" />
+                <span className="demo-visual-node demo-visual-node-three" />
+            </div>
+            <span className="demo-visual-scan" />
+            <span className="demo-visual-caption">SLMN / 01</span>
+        </div>
+    )
+}
+'@ | Set-Content -LiteralPath (Join-Path $componentsPath "StarterVisual.$componentExtension") -Encoding utf8
+
+    @'
 #root,
 .app-shell {
     min-height: 100vh;
@@ -1200,9 +1497,11 @@ export default function TechPill({ name, detail, href }$techPillProps) {
     @'
 .demo-shell {
     box-sizing: border-box;
-    min-height: 100vh;
-    padding: 2.5rem 1rem;
-    color: #fff;
+    display: grid;
+    min-height: 100svh;
+    padding: clamp(1rem, 2.5vw, 2rem);
+    place-items: center;
+    color: #ffffff;
     background-color: #171717;
     background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
     background-size: 3rem 3rem;
@@ -1210,14 +1509,16 @@ export default function TechPill({ name, detail, href }$techPillProps) {
 
 .demo-grid {
     display: grid;
-    min-height: calc(100vh - 5rem);
-    max-width: 72rem;
+    width: min(100%, 72rem);
+    min-height: min(48rem, calc(100svh - 2rem));
+    padding: 0;
     margin: 0 auto;
     align-items: center;
+    gap: 2.5rem;
 }
 
 .demo-copy {
-    max-width: 40rem;
+    max-width: 38rem;
 }
 
 .demo-eyebrow {
@@ -1232,7 +1533,7 @@ export default function TechPill({ name, detail, href }$techPillProps) {
 .demo-copy h1 {
     max-width: 36rem;
     margin: 0;
-    font-size: clamp(2.5rem, 7vw, 4.5rem);
+    font-size: 3rem;
     font-weight: 600;
     line-height: 1.1;
 }
@@ -1241,50 +1542,51 @@ export default function TechPill({ name, detail, href }$techPillProps) {
     max-width: 34rem;
     margin: 1.25rem 0 0;
     color: #d4d4d4;
-    font-size: 1.125rem;
-    line-height: 1.75;
+    font-size: 1rem;
+    line-height: 1.65;
 }
 
 .demo-tech-list {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
-    margin-top: 2rem;
+    margin-top: 2.25rem;
 }
 
 .demo-tech-pill {
     display: flex;
+    min-height: 5rem;
     gap: 0.75rem;
-    align-items: flex-start;
-    padding: 1rem;
+    align-items: center;
+    padding: 0.875rem;
     color: inherit;
     text-decoration: none;
-    background: rgb(255 255 255 / 0.05);
+    background: rgb(255 255 255 / 0.045);
     border: 1px solid rgb(255 255 255 / 0.1);
     transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
 }
 
 .demo-tech-pill:hover {
     background: rgb(255 255 255 / 0.09);
-    border-color: rgb(147 197 253 / 0.65);
+    border-color: rgb(125 211 252 / 0.72);
     transform: translateY(-2px);
 }
 
 .demo-tech-pill:focus-visible {
-    outline: 2px solid #93c5fd;
+    outline: 2px solid #7dd3fc;
     outline-offset: 3px;
 }
 
 .demo-tech-mark {
     display: grid;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.8rem;
+    height: 1.8rem;
     flex: 0 0 auto;
     place-items: center;
-    color: #bfdbfe;
+    color: #bae6fd;
     font-size: 0.75rem;
     font-weight: 700;
-    background: rgb(96 165 250 / 0.2);
+    background: #0c4a6e;
 }
 
 .demo-tech-name,
@@ -1293,14 +1595,14 @@ export default function TechPill({ name, detail, href }$techPillProps) {
 }
 
 .demo-tech-name {
-    color: #fff;
-    font-weight: 600;
+    color: #ffffff;
+    font-weight: 650;
 }
 
 .demo-tech-detail {
-    margin-top: 0.25rem;
+    margin-top: 0.2rem;
     color: #a3a3a3;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
 }
 
 .demo-note {
@@ -1309,10 +1611,140 @@ export default function TechPill({ name, detail, href }$techPillProps) {
     font-size: 0.875rem;
 }
 
+.demo-visual {
+    --demo-pointer-x: 0px;
+    --demo-pointer-y: 0px;
+    position: relative;
+    min-height: 22rem;
+    overflow: hidden;
+    isolation: isolate;
+    background: #1d2329;
+    border: 1px solid rgb(255 255 255 / 0.11);
+}
+
+.demo-visual-grid {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(#26313a 1px, transparent 1px), linear-gradient(90deg, #26313a 1px, transparent 1px);
+    background-size: 2rem 2rem;
+    opacity: 0.85;
+}
+
+.demo-visual-signal {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 15rem;
+    height: 15rem;
+    transform: translate(calc(-50% + var(--demo-pointer-x)), calc(-50% + var(--demo-pointer-y)));
+    transition: transform 180ms ease-out;
+}
+
+.demo-visual-core,
+.demo-visual-node {
+    position: absolute;
+    display: block;
+}
+
+.demo-visual-core {
+    top: 50%;
+    left: 50%;
+    width: 5rem;
+    height: 5rem;
+    display: grid;
+    place-items: center;
+    color: #38bdf8;
+    font-family: "Aptos", "Segoe UI", sans-serif;
+    font-size: 5.25rem;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: 0 0 1.5rem rgb(56 189 248 / 0.82);
+    transform: translate(-50%, -50%);
+    animation: demo-core-pulse 2.8s ease-in-out infinite;
+}
+
+.demo-visual-node {
+    width: 0.75rem;
+    height: 0.75rem;
+    background: #f0f9ff;
+    box-shadow: 0 0 1rem rgb(125 211 252 / 0.9);
+}
+
+.demo-visual-node-one {
+    top: 1.4rem;
+    left: 2.1rem;
+}
+
+.demo-visual-node-two {
+    right: 1.8rem;
+    bottom: 2.75rem;
+}
+
+.demo-visual-node-three {
+    top: 50%;
+    right: -0.375rem;
+}
+
+.demo-visual-scan {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: #7dd3fc;
+    box-shadow: 0 0 1rem #38bdf8;
+    animation: demo-scan 4.5s ease-in-out infinite;
+}
+
+.demo-visual-caption {
+    position: absolute;
+    right: 1rem;
+    bottom: 0.875rem;
+    color: #bae6fd;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+}
+
+[data-demo-reveal] {
+    animation: demo-reveal 650ms both;
+}
+
+.demo-use-gsap [data-demo-reveal] {
+    animation: none;
+}
+
+@keyframes demo-reveal {
+    from { opacity: 0; transform: translateY(1rem); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes demo-core-pulse {
+    50% { opacity: 0.72; text-shadow: 0 0 2.25rem rgb(56 189 248 / 0.98); }
+}
+
+@keyframes demo-scan {
+    50% { transform: translateY(22rem); }
+}
+
 @media (min-width: 48rem) {
-    .demo-shell {
-        padding-right: 2rem;
-        padding-left: 2rem;
+    .demo-copy h1 {
+        font-size: 4.5rem;
+    }
+}
+
+@media (min-width: 64rem) {
+    .demo-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.85fr);
+        gap: 4rem;
+    }
+
+    .demo-visual {
+        min-height: 30rem;
+    }
+
+    @keyframes demo-scan {
+        50% { transform: translateY(30rem); }
     }
 }
 '@ | Set-Content -LiteralPath (Join-Path $stylesPath 'demo.css') -Encoding utf8
@@ -1327,7 +1759,7 @@ export default function TechPill({ name, detail, href }$techPillProps) {
 </head>
 <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script type="module" src="/src/main$([System.IO.Path]::GetExtension($appPath))"></script>
 </body>
 </html>
 "@ | Set-Content -LiteralPath (Join-Path $Path 'index.html') -Encoding utf8
@@ -1377,7 +1809,18 @@ function Set-NextStarterScreen {
     if ($IncludeGsap) {
         $technologies += 'GSAP'
     }
-    $technologyPills = ($technologies | ForEach-Object { "                    <span className={styles.pill}>$_</span>" }) -join "`n"
+    $technologyCards = ($technologies | ForEach-Object {
+        $technology = Get-SlmnTechnologyInfo $_
+@"
+                        <a className="slmn-next-tech-card" href="$($technology.Href)" target="_blank" rel="noreferrer">
+                            <span className="slmn-next-tech-mark" aria-hidden="true">$($technology.Name.Substring(0, 1))</span>
+                            <span>
+                                <span className="slmn-next-tech-name">$($technology.Name)</span>
+                                <span className="slmn-next-tech-detail">$($technology.Detail)</span>
+                            </span>
+                        </a>
+"@
+    }) -join "`n"
     $gsapImport = if ($IncludeGsap) { "import { useLayoutEffect, useRef } from 'react'`nimport gsap from 'gsap'" } else { '' }
     $animation = if ($IncludeGsap) {
 @'
@@ -1399,23 +1842,52 @@ function Set-NextStarterScreen {
 '@
     } else { '' }
     $screenReference = if ($IncludeGsap) { ' ref={screenRef}' } else { '' }
+    $screenClass = if ($IncludeGsap) { 'slmn-next-shell slmn-next-use-gsap' } else { 'slmn-next-shell' }
 
     @"
 'use client'
 
 $gsapImport
-import styles from '../app/slmn-start.module.css'
 
 export default function SlmnStartScreen() {
 $animation
     return (
-        <main$screenReference className={styles.shell}>
-            <section className={styles.content}>
-                <p className={styles.kicker} data-slmn-reveal>SLMN Starter</p>
-                <h1 data-slmn-reveal>Ready to build.</h1>
-                <p className={styles.project} data-slmn-reveal>$Name</p>
-                <div className={styles.pills} data-slmn-reveal>
-$technologyPills
+        <main$screenReference className="$screenClass">
+            <section className="slmn-next-screen">
+                <div className="slmn-next-copy">
+                    <p className="slmn-next-kicker" data-slmn-next-reveal>SLMN Starter</p>
+                    <h1 data-slmn-next-reveal>Build what is next.</h1>
+                    <p className="slmn-next-project" data-slmn-next-reveal>$Name</p>
+                    <p className="slmn-next-description" data-slmn-next-reveal>A clear starting point, shaped for this project's actual stack.</p>
+                    <div className="slmn-next-tech-list" data-slmn-next-reveal>
+$technologyCards
+                    </div>
+                </div>
+                <div
+                    className="slmn-next-visual"
+                    data-slmn-next-reveal
+                    aria-hidden="true"
+                    onPointerMove={(event) => {
+                        const bounds = event.currentTarget.getBoundingClientRect()
+                        const pointerX = Math.round(((event.clientX - bounds.left) / bounds.width - 0.5) * 22)
+                        const pointerY = Math.round(((event.clientY - bounds.top) / bounds.height - 0.5) * 22)
+                        event.currentTarget.style.setProperty('--slmn-next-pointer-x', pointerX + 'px')
+                        event.currentTarget.style.setProperty('--slmn-next-pointer-y', pointerY + 'px')
+                    }}
+                    onPointerLeave={(event) => {
+                        event.currentTarget.style.setProperty('--slmn-next-pointer-x', '0px')
+                        event.currentTarget.style.setProperty('--slmn-next-pointer-y', '0px')
+                    }}
+                >
+                    <span className="slmn-next-visual-grid" />
+                    <div className="slmn-next-visual-signal">
+                        <span className="slmn-next-visual-core">S</span>
+                        <span className="slmn-next-visual-node slmn-next-visual-node-one" />
+                        <span className="slmn-next-visual-node slmn-next-visual-node-two" />
+                        <span className="slmn-next-visual-node slmn-next-visual-node-three" />
+                    </div>
+                    <span className="slmn-next-visual-scan" />
+                    <span className="slmn-next-visual-caption">SLMN / 01</span>
                 </div>
             </section>
         </main>
@@ -1424,6 +1896,7 @@ $technologyPills
 "@ | Set-Content -LiteralPath (Join-Path $componentsDirectory "SlmnStartScreen.$componentExtension") -Encoding utf8
 
     @"
+import './slmn-start.css'
 import SlmnStartScreen from '../components/SlmnStartScreen'
 
 export default function Home() {
@@ -1490,7 +1963,261 @@ export default function Home() {
         padding: 2.5rem;
     }
 }
-'@ | Set-Content -LiteralPath (Join-Path $appDirectory 'slmn-start.module.css') -Encoding utf8
+    @'
+* {
+    box-sizing: border-box;
+}
+
+.slmn-next-shell {
+    display: grid;
+    min-height: 100svh;
+    padding: clamp(1rem, 2.5vw, 2rem);
+    color: #ffffff;
+    background-color: #171717;
+    background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+    place-items: center;
+}
+
+.slmn-next-screen {
+    display: grid;
+    width: min(100%, 72rem);
+    min-height: min(48rem, calc(100svh - 2rem));
+    padding: 0;
+    align-items: center;
+    gap: 2.5rem;
+}
+
+.slmn-next-copy {
+    max-width: 38rem;
+}
+
+.slmn-next-kicker {
+    margin: 0 0 1rem;
+    color: #93c5fd;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.slmn-next-copy h1 {
+    margin: 0;
+    font-size: 3rem;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.slmn-next-project {
+    margin: 1.25rem 0 0;
+    color: #d4d4d4;
+    font-size: 1.125rem;
+}
+
+.slmn-next-description {
+    max-width: 32rem;
+    margin: 0.75rem 0 0;
+    color: #a3a3a3;
+    font-size: 1rem;
+    line-height: 1.65;
+}
+
+.slmn-next-tech-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 2.25rem;
+}
+
+.slmn-next-tech-card {
+    display: flex;
+    min-height: 5rem;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.875rem;
+    color: inherit;
+    font-size: 0.875rem;
+    text-decoration: none;
+    background: rgb(255 255 255 / 0.045);
+    border: 1px solid rgb(255 255 255 / 0.1);
+    transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.slmn-next-tech-card:hover {
+    background: rgb(255 255 255 / 0.09);
+    border-color: rgb(125 211 252 / 0.72);
+    transform: translateY(-2px);
+}
+
+.slmn-next-tech-card:focus-visible {
+    outline: 2px solid #7dd3fc;
+    outline-offset: 3px;
+}
+
+.slmn-next-tech-mark {
+    display: grid;
+    width: 1.8rem;
+    height: 1.8rem;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #bae6fd;
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: #0c4a6e;
+}
+
+.slmn-next-tech-name,
+.slmn-next-tech-detail {
+    display: block;
+}
+
+.slmn-next-tech-name {
+    font-weight: 650;
+}
+
+.slmn-next-tech-detail {
+    margin-top: 0.2rem;
+    color: #a3a3a3;
+    font-size: 0.75rem;
+}
+
+.slmn-next-visual {
+    --slmn-next-pointer-x: 0px;
+    --slmn-next-pointer-y: 0px;
+    position: relative;
+    min-height: 22rem;
+    overflow: hidden;
+    isolation: isolate;
+    background: #1d2329;
+    border: 1px solid rgb(255 255 255 / 0.11);
+}
+
+.slmn-next-visual-grid {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(#26313a 1px, transparent 1px), linear-gradient(90deg, #26313a 1px, transparent 1px);
+    background-size: 2rem 2rem;
+    opacity: 0.85;
+}
+
+.slmn-next-visual-signal {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 15rem;
+    height: 15rem;
+    transform: translate(calc(-50% + var(--slmn-next-pointer-x)), calc(-50% + var(--slmn-next-pointer-y)));
+    transition: transform 180ms ease-out;
+}
+
+.slmn-next-visual-core,
+.slmn-next-visual-node {
+    position: absolute;
+    display: block;
+}
+
+.slmn-next-visual-core {
+    top: 50%;
+    left: 50%;
+    width: 5rem;
+    height: 5rem;
+    display: grid;
+    place-items: center;
+    color: #38bdf8;
+    font-family: "Aptos", "Segoe UI", sans-serif;
+    font-size: 5.25rem;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: 0 0 1.5rem rgb(56 189 248 / 0.82);
+    transform: translate(-50%, -50%);
+    animation: slmn-next-core-pulse 2.8s ease-in-out infinite;
+}
+
+.slmn-next-visual-node {
+    width: 0.75rem;
+    height: 0.75rem;
+    background: #f0f9ff;
+    box-shadow: 0 0 1rem rgb(125 211 252 / 0.9);
+}
+
+.slmn-next-visual-node-one {
+    top: 1.4rem;
+    left: 2.1rem;
+}
+
+.slmn-next-visual-node-two {
+    right: 1.8rem;
+    bottom: 2.75rem;
+}
+
+.slmn-next-visual-node-three {
+    top: 50%;
+    right: -0.375rem;
+}
+
+.slmn-next-visual-scan {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: #7dd3fc;
+    box-shadow: 0 0 1rem #38bdf8;
+    animation: slmn-next-scan 4.5s ease-in-out infinite;
+}
+
+.slmn-next-visual-caption {
+    position: absolute;
+    right: 1rem;
+    bottom: 0.875rem;
+    color: #bae6fd;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+}
+
+[data-slmn-next-reveal] {
+    animation: slmn-next-reveal 650ms both;
+}
+
+.slmn-next-use-gsap [data-slmn-next-reveal] {
+    animation: none;
+}
+
+@keyframes slmn-next-reveal {
+    from { opacity: 0; transform: translateY(1rem); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slmn-next-core-pulse {
+    50% { opacity: 0.72; text-shadow: 0 0 2.25rem rgb(56 189 248 / 0.98); }
+}
+
+@keyframes slmn-next-scan {
+    50% { transform: translateY(22rem); }
+}
+
+@media (min-width: 48rem) {
+    .slmn-next-copy h1 {
+        font-size: 4.5rem;
+    }
+}
+
+@media (min-width: 64rem) {
+    .slmn-next-screen {
+        grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.85fr);
+        gap: 4rem;
+    }
+
+    .slmn-next-visual {
+        min-height: 30rem;
+    }
+
+    @keyframes slmn-next-scan {
+        50% { transform: translateY(30rem); }
+    }
+}
+'@ | Set-Content -LiteralPath (Join-Path $appDirectory 'slmn-start.css') -Encoding utf8
 }
 
 function Complete-InteractiveProject {
