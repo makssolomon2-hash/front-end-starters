@@ -1,4 +1,10 @@
-<img width="1918" height="1034" alt="image" src="https://github.com/user-attachments/assets/54ddb4e6-c46d-4273-a1e0-d909b771f47a" />
+<p align="center">
+  <img 
+    src="https://github.com/user-attachments/assets/54ddb4e6-c46d-4273-a1e0-d909b771f47a" 
+    alt="SLMN React Starter" 
+    style="max-width: 100%; height: auto; border-radius: 12px;" 
+  />
+</p>
 
 # SLMN Frontend Starters
 
