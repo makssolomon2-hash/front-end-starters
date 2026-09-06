@@ -4,6 +4,8 @@
 # Usage:
 #   . .\starters.ps1
 #
+#   slmn-starter
+#
 #   slmn-app "my-app"
 #
 #   vanilla-project "my-site"
@@ -142,6 +144,48 @@ function Confirm-Feature {
             }
             default {
                 Write-Host "`nPress Y for Yes or N for No." -ForegroundColor Yellow
+            }
+        }
+    }
+}
+
+function Select-StarterCommand {
+    $options = @(
+        @{ Label = 'Vanilla'; Command = 'vanilla-project' },
+        @{ Label = 'Tailwind CSS'; Command = 'tailwind-project' },
+        @{ Label = 'GSAP'; Command = 'gsap-project' },
+        @{ Label = 'Tailwind CSS + GSAP'; Command = 'tailwind-gsap-project' },
+        @{ Label = 'React'; Command = 'react-project' },
+        @{ Label = 'React + Tailwind CSS'; Command = 'react-tailwind-project' },
+        @{ Label = 'React + Tailwind CSS + GSAP'; Command = 'react-tailwind-gsap-project' },
+        @{ Label = 'React + Tailwind CSS + GSAP + Three.js'; Command = 'react-tailwind-gsap-three-project' },
+        @{ Label = 'Vite (choose framework and variant)'; Command = 'vite-app' },
+        @{ Label = 'Next.js'; Command = 'next-app' },
+        @{ Label = 'SLMN App (React JavaScript)'; Command = 'slmn-app' }
+    )
+    $selectedIndex = 0
+
+    while ($true) {
+        Clear-Host
+        Write-Host 'SLMN Starter' -ForegroundColor Cyan
+        Write-Host 'Use Up/Down arrows, then Enter to choose a starter.' -ForegroundColor DarkGray
+        Write-Host ''
+
+        for ($index = 0; $index -lt $options.Count; $index++) {
+            $prefix = if ($index -eq $selectedIndex) { '> ' } else { '  ' }
+            $color = if ($index -eq $selectedIndex) { 'Blue' } else { 'White' }
+            Write-Host "$prefix$($options[$index].Label)" -ForegroundColor $color
+        }
+
+        switch ([Console]::ReadKey($true).Key) {
+            'UpArrow' {
+                $selectedIndex = if ($selectedIndex -eq 0) { $options.Count - 1 } else { $selectedIndex - 1 }
+            }
+            'DownArrow' {
+                $selectedIndex = if ($selectedIndex -eq ($options.Count - 1)) { 0 } else { $selectedIndex + 1 }
+            }
+            'Enter' {
+                return $options[$selectedIndex].Command
             }
         }
     }
@@ -551,7 +595,6 @@ export default function ThreeScene() {
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -588,6 +631,285 @@ export default function ThreeScene() {
     Remove-Item -LiteralPath (Join-Path $Path 'src/assets') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $Path 'src/App.css') -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $Path 'public') -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+function Set-ReactStarterDemo {
+    param(
+        [string]$Path,
+        [string]$Name,
+        [switch]$IncludeTailwind,
+        [switch]$IncludeGsap
+    )
+
+    $componentsPath = Join-Path $Path 'src/components'
+    $stylesPath = Join-Path $Path 'src/styles'
+    New-Item -ItemType Directory -Path $componentsPath, $stylesPath -Force | Out-Null
+
+    $technologies = @(
+        @{ Name = 'Vite'; Detail = 'Build tooling'; Href = 'https://vite.dev/' },
+        @{ Name = 'React'; Detail = 'UI library'; Href = 'https://react.dev/' },
+        @{ Name = 'JavaScript'; Detail = 'Language'; Href = 'https://developer.mozilla.org/docs/Web/JavaScript' }
+    )
+    if ($IncludeTailwind) {
+        $technologies += @{ Name = 'Tailwind CSS'; Detail = 'Utility styling'; Href = 'https://tailwindcss.com/' }
+    }
+    if ($IncludeGsap) {
+        $technologies += @{ Name = 'GSAP'; Detail = 'Entrance motion'; Href = 'https://gsap.com/' }
+    }
+    $technologyItems = ($technologies | ForEach-Object {
+@"
+    {
+        name: '$($_.Name)',
+        detail: '$($_.Detail)',
+        href: '$($_.Href)',
+    },
+"@
+    }) -join ''
+    $gsapImports = if ($IncludeGsap) { "import { useLayoutEffect, useRef } from 'react'`nimport gsap from 'gsap'" } else { '' }
+    $heroReference = if ($IncludeGsap) { "    const heroRef = useRef(null)`n    const titleRef = useRef(null)`n" } else { '' }
+    $animation = if ($IncludeGsap) {
+@'
+    useLayoutEffect(() => {
+        const context = gsap.context(() => {
+            gsap.from(titleRef.current, {
+                y: 28,
+                opacity: 0,
+                duration: 0.8,
+                ease: 'power3.out',
+            })
+            gsap.from('[data-demo-reveal]', {
+                y: 16,
+                opacity: 0,
+                duration: 0.55,
+                stagger: 0.1,
+                delay: 0.2,
+                ease: 'power2.out',
+            })
+        }, heroRef)
+
+        return () => context.revert()
+    }, [])
+'@
+    } else { '' }
+    $headerRef = if ($IncludeGsap) { ' ref={heroRef}' } else { '' }
+    $titleRef = if ($IncludeGsap) { ' ref={titleRef}' } else { '' }
+    $description = if ($IncludeGsap) { 'A removable preview for React with a focused GSAP entrance animation.' } elseif ($IncludeTailwind) { 'A removable preview for React with Tailwind CSS ready for your application.' } else { 'A removable preview for a clean React application.' }
+
+    @'
+import Hero from './components/Hero.jsx'
+import './styles/app.css'
+import './styles/demo.css'
+
+export default function App() {
+    return (
+        <main className="app-shell">
+            <Hero />
+        </main>
+    )
+}
+'@ | Set-Content -LiteralPath (Join-Path $Path 'src/App.jsx') -Encoding utf8
+
+    @"
+$gsapImports
+import TechPill from './TechPill.jsx'
+
+const technologies = [
+$technologyItems]
+
+export default function Hero() {
+$heroReference$animation
+    return (
+        <section className="demo-shell">
+            <header$headerRef className="demo-grid">
+                <div className="demo-copy">
+                    <p data-demo-reveal className="demo-eyebrow">SLMN React Starter</p>
+                    <h1$titleRef>Build Your Modern App.</h1>
+                    <p data-demo-reveal className="demo-description">
+                        $description
+                    </p>
+                    <div data-demo-reveal className="demo-tech-list">
+                        {technologies.map((technology) => (
+                            <TechPill key={technology.name} {...technology} />
+                        ))}
+                    </div>
+                    <p data-demo-reveal className="demo-note">
+                        Each card opens its official site in a new tab.
+                    </p>
+                </div>
+            </header>
+        </section>
+    )
+}
+"@ | Set-Content -LiteralPath (Join-Path $componentsPath 'Hero.jsx') -Encoding utf8
+
+    @'
+export default function TechPill({ name, detail, href }) {
+    return (
+        <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="demo-tech-pill"
+        >
+            <span className="demo-tech-mark" aria-hidden="true">{name.slice(0, 1)}</span>
+            <span>
+                <span className="demo-tech-name">{name}</span>
+                <span className="demo-tech-detail">{detail}</span>
+            </span>
+        </a>
+    )
+}
+'@ | Set-Content -LiteralPath (Join-Path $componentsPath 'TechPill.jsx') -Encoding utf8
+
+    @'
+#root,
+.app-shell {
+    min-height: 100vh;
+}
+'@ | Set-Content -LiteralPath (Join-Path $stylesPath 'app.css') -Encoding utf8
+
+    @'
+.demo-shell {
+    box-sizing: border-box;
+    min-height: 100vh;
+    padding: 2.5rem 1rem;
+    color: #fff;
+    background-color: #171717;
+    background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+}
+
+.demo-grid {
+    display: grid;
+    min-height: calc(100vh - 5rem);
+    max-width: 72rem;
+    margin: 0 auto;
+    align-items: center;
+}
+
+.demo-copy {
+    max-width: 40rem;
+}
+
+.demo-eyebrow {
+    margin: 0 0 1rem;
+    color: #93c5fd;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.demo-copy h1 {
+    max-width: 36rem;
+    margin: 0;
+    font-size: clamp(2.5rem, 7vw, 4.5rem);
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.demo-description {
+    max-width: 34rem;
+    margin: 1.25rem 0 0;
+    color: #d4d4d4;
+    font-size: 1.125rem;
+    line-height: 1.75;
+}
+
+.demo-tech-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: 0.75rem;
+    margin-top: 2rem;
+}
+
+.demo-tech-pill {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 1rem;
+    color: inherit;
+    text-decoration: none;
+    background: rgb(255 255 255 / 0.05);
+    border: 1px solid rgb(255 255 255 / 0.1);
+    transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.demo-tech-pill:hover {
+    background: rgb(255 255 255 / 0.09);
+    border-color: rgb(147 197 253 / 0.65);
+    transform: translateY(-2px);
+}
+
+.demo-tech-pill:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 3px;
+}
+
+.demo-tech-mark {
+    display: grid;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex: 0 0 auto;
+    place-items: center;
+    color: #bfdbfe;
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: rgb(96 165 250 / 0.2);
+}
+
+.demo-tech-name,
+.demo-tech-detail {
+    display: block;
+}
+
+.demo-tech-name {
+    color: #fff;
+    font-weight: 600;
+}
+
+.demo-tech-detail {
+    margin-top: 0.25rem;
+    color: #a3a3a3;
+    font-size: 0.875rem;
+}
+
+.demo-note {
+    margin: 0.75rem 0 0;
+    color: #a3a3a3;
+    font-size: 0.875rem;
+}
+
+@media (min-width: 48rem) {
+    .demo-shell {
+        padding-right: 2rem;
+        padding-left: 2rem;
+    }
+}
+'@ | Set-Content -LiteralPath (Join-Path $stylesPath 'demo.css') -Encoding utf8
+
+    @"
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$Name</title>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
+"@ | Set-Content -LiteralPath (Join-Path $Path 'index.html') -Encoding utf8
+
+    Remove-Item -LiteralPath (Join-Path $Path 'src/assets') -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Path 'public') -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Path 'src/App.css') -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Path 'eslint.config.js') -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $Path 'README.md') -Force -ErrorAction SilentlyContinue
+    Invoke-Npm pkg delete scripts.lint
+    Invoke-Npm uninstall eslint @eslint/js eslint-plugin-react-hooks eslint-plugin-react-refresh globals
 }
 
 function Complete-InteractiveProject {
@@ -664,13 +986,13 @@ function vanilla-project {
         <h1>SLMN Vanilla Starter</h1>
         <h2>$name</h2>
     </main>
-    <script src="./js/main.js"></script>
+    <script src="./js/script.js"></script>
 </body>
 </html>
 "@ | Out-File (Join-Path $path 'index.html') -Encoding utf8
 
     Get-ResponsiveCss | Out-File (Join-Path $path 'css/style.css') -Encoding utf8
-    Set-Content (Join-Path $path 'js/main.js') -Value "console.log('Page loaded')" -Encoding utf8
+    Set-Content (Join-Path $path 'js/script.js') -Value "console.log('Page loaded')" -Encoding utf8
 
     Open-ProjectEditor $path
 }
@@ -710,7 +1032,6 @@ export default defineConfig({
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -729,7 +1050,7 @@ export default defineConfig({
 import './style.css'
 
 console.log('Page loaded')
-'@ | Out-File "src/main.js" -Encoding utf8
+'@ | Out-File "src/script.js" -Encoding utf8
 
     @"
 <!DOCTYPE html>
@@ -744,7 +1065,7 @@ console.log('Page loaded')
         <h1>SLMN Tailwind Starter</h1>
         <h2 class="text-3xl font-semibold tab:text-4xl lap:text-5xl fhd:text-6xl 2k:text-7xl 4k:text-8xl">$name</h2>
     </main>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/script.js"></script>
 </body>
 </html>
 "@ | Out-File "index.html" -Encoding utf8
@@ -788,7 +1109,7 @@ function gsap-project {
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-    <script src="./js/main.js"></script>
+    <script src="./js/script.js"></script>
 </body>
 </html>
 "@ | Out-File "index.html" -Encoding utf8
@@ -803,7 +1124,7 @@ gsap.from('.title', {
     ease: 'power2.out'
 })
 console.log('Page loaded')
-"@ | Out-File "js/main.js" -Encoding utf8
+"@ | Out-File "js/script.js" -Encoding utf8
 
     Open-ProjectEditor $path
 }
@@ -844,7 +1165,6 @@ export default defineConfig({
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -871,7 +1191,7 @@ gsap.from('.title', {
 })
 
 console.log('Page loaded')
-'@ | Out-File "src/main.js" -Encoding utf8
+'@ | Out-File "src/script.js" -Encoding utf8
 
     @"
 <!DOCTYPE html>
@@ -885,7 +1205,7 @@ console.log('Page loaded')
     <main class="grid min-h-screen place-items-center px-4">
         <h1 class="title text-3xl font-semibold tab:text-4xl lap:text-5xl fhd:text-6xl 2k:text-7xl 4k:text-8xl">$name</h1>
     </main>
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/script.js"></script>
 </body>
 </html>
 "@ | Out-File "index.html" -Encoding utf8
@@ -918,7 +1238,18 @@ function react-project {
     Set-Location $path
 
     Invoke-Npm install
-    Get-ResponsiveCss | Out-File "src/index.css" -Encoding utf8
+    @'
+html {
+    background: #171717;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+'@ | Set-Content -LiteralPath "src/index.css" -Encoding utf8
 
     @"
 import { StrictMode } from 'react'
@@ -935,55 +1266,16 @@ createRoot(document.getElementById('root')).render(
 )
 "@ | Out-File "src/main.jsx" -Encoding utf8
 
-    @"
-    import { useState } from 'react'
-
-export default function App() {
-        const [count, setCount] = useState(0)
-
-    return (
-            <main>
-                <div>
-                    <h1>$name</h1>
-                    <button type="button" onClick={() => setCount((currentCount) => currentCount + 1)}>
-                        Count: {count}
-                    </button>
-                </div>
-            </main>
-    )
-}
-"@ | Out-File "src/App.jsx" -Encoding utf8
-
-    @"
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>$name</title>
-</head>
-<body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-</body>
-</html>
-"@ | Out-File "index.html" -Encoding utf8
-
-    Remove-Item "src/assets" -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item "public" -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item "src/App.css" -Force -ErrorAction SilentlyContinue
-    Remove-Item "eslint.config.js" -Force -ErrorAction SilentlyContinue
-    Remove-Item "README.md" -Force -ErrorAction SilentlyContinue
-    Invoke-Npm pkg delete scripts.lint
-    Invoke-Npm uninstall eslint @eslint/js eslint-plugin-react-hooks eslint-plugin-react-refresh globals
+    Set-ReactStarterDemo -Path $path -Name $name
 
     Open-ProjectEditor $path
+    Invoke-Npm run dev
 }
 
 # -----------------------------
-# 6. REACT + TAILWIND + GSAP
+# 6. REACT + TAILWIND CSS
 # -----------------------------
-function react-tailwind-gsap-project {
+function react-tailwind-project {
     param([string]$name)
 
     $path = Join-Path $HOME "Desktop\$name"
@@ -1001,7 +1293,6 @@ function react-tailwind-gsap-project {
 
     Invoke-Npm install
     Invoke-Npm install -D tailwindcss @tailwindcss/vite
-    Invoke-Npm install gsap
 
     @"
 import { defineConfig } from 'vite'
@@ -1017,7 +1308,6 @@ export default defineConfig({
 @import "tailwindcss";
 
 @theme {
-    --breakpoint-*: initial;
     --breakpoint-tab: 48rem;
     --breakpoint-lap: 64rem;
     --breakpoint-fhd: 120rem;
@@ -1026,11 +1316,15 @@ export default defineConfig({
 }
 
 @layer base {
+    html {
+        @apply bg-neutral-900;
+    }
+
     body {
-        @apply bg-neutral-900 text-white antialiased;
+        @apply min-h-screen bg-neutral-900 text-white antialiased;
     }
 }
-'@ | Out-File "src/index.css" -Encoding utf8
+'@ | Set-Content -LiteralPath "src/index.css" -Encoding utf8
 
     @'
 import { StrictMode } from 'react'
@@ -1047,72 +1341,68 @@ createRoot(document.getElementById('root')).render(
 )
 '@ | Out-File "src/main.jsx" -Encoding utf8
 
-    (@'
-import { useEffect, useRef, useState } from 'react'
-import gsap from 'gsap'
-
-export default function App() {
-    const [count, setCount] = useState(0)
-    const titleRef = useRef(null)
-
-    useEffect(() => {
-        const animation = gsap.from(titleRef.current, {
-            y: 24,
-            opacity: 0,
-            duration: 0.6,
-            ease: 'power2.out',
-        })
-
-        return () => animation.kill()
-    }, [])
-
-    return (
-        <main className="grid min-h-screen place-items-center px-4">
-            <div className="text-center">
-                <h1 ref={titleRef} className="text-3xl font-semibold tab:text-4xl lap:text-5xl fhd:text-6xl 2k:text-7xl 4k:text-8xl">
-                    __NAME__
-                </h1>
-                <button
-                    type="button"
-                    onClick={() => setCount((currentCount) => currentCount + 1)}
-                    className="mt-4 rounded-md bg-blue-500 px-4 py-2 font-medium text-white hover:bg-blue-600"
-                >
-                    Count: {count}
-                </button>
-            </div>
-        </main>
-    )
-}
-'@ -replace '__NAME__', $name) | Out-File "src/App.jsx" -Encoding utf8
-
-    @"
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>$name</title>
-</head>
-<body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-</body>
-</html>
-"@ | Out-File "index.html" -Encoding utf8
-
-    Remove-Item "src/assets" -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item "public" -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item "src/App.css" -Force -ErrorAction SilentlyContinue
-    Remove-Item "eslint.config.js" -Force -ErrorAction SilentlyContinue
-    Remove-Item "README.md" -Force -ErrorAction SilentlyContinue
-    Invoke-Npm pkg delete scripts.lint
-    Invoke-Npm uninstall eslint @eslint/js eslint-plugin-react-hooks eslint-plugin-react-refresh globals
+    Set-ReactStarterDemo -Path $path -Name $name -IncludeTailwind
 
     Open-ProjectEditor $path
+    Invoke-Npm run dev
 }
 
 # -----------------------------
-# 7. INTERACTIVE VITE
+# 7. REACT + TAILWIND CSS + GSAP
+# -----------------------------
+function react-tailwind-gsap-project {
+    param([string]$name)
+
+    $path = Join-Path $HOME "Desktop\$name"
+    if (Test-Path -LiteralPath $path) {
+        throw "Project already exists: $path"
+    }
+
+    Set-Location (Join-Path $HOME 'Desktop')
+    npm create vite@latest $name -- --no-interactive --template react
+    if ($LASTEXITCODE -ne 0) {
+        throw "Vite scaffold failed for '$name'."
+    }
+    Set-Location $path
+
+    Invoke-Npm install
+    Initialize-ViteTailwind $path
+    Invoke-Npm install gsap
+    Set-ReactStarterDemo -Path $path -Name $name -IncludeTailwind -IncludeGsap
+
+    Open-ProjectEditor $path
+    Invoke-Npm run dev
+}
+
+# -----------------------------
+# 8. REACT + TAILWIND CSS + GSAP + THREE.JS
+# -----------------------------
+function react-tailwind-gsap-three-project {
+    param([string]$name)
+
+    $path = Join-Path $HOME "Desktop\$name"
+    if (Test-Path -LiteralPath $path) {
+        throw "Project already exists: $path"
+    }
+
+    Set-Location (Join-Path $HOME 'Desktop')
+    npm create vite@latest $name -- --no-interactive --template react
+    if ($LASTEXITCODE -ne 0) {
+        throw "Vite scaffold failed for '$name'."
+    }
+    Set-Location $path
+
+    Invoke-Npm install
+    Initialize-ViteTailwind $path
+    Invoke-Npm install gsap three react-icons
+    Set-FullDemoPage -Path $path -Name $name
+
+    Open-ProjectEditor $path
+    Invoke-Npm run dev
+}
+
+# -----------------------------
+# 9. INTERACTIVE VITE
 # -----------------------------
 function vite-app {
     param([Parameter(Mandatory)][string]$name)
@@ -1134,26 +1424,34 @@ function vite-app {
 }
 
 # -----------------------------
-# 8. SLMN APP (FLAGSHIP DEMO)
+# 10. SLMN APP (FLAGSHIP DEMO)
 # -----------------------------
 function slmn-app {
     param([Parameter(Mandatory)][string]$name)
 
     $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
-    $path = Join-Path $desktop $name
+    $projectName = ($name.Trim().ToLowerInvariant() -replace '[^a-z0-9._-]+', '-').Trim([char[]]'.-_')
+    if ([string]::IsNullOrWhiteSpace($projectName)) {
+        throw 'Project name must contain at least one letter or number.'
+    }
+
+    $path = Join-Path $desktop $projectName
     if (Test-Path -LiteralPath $path) {
         throw "Project already exists: $path"
     }
 
     Set-Location $desktop
-    Write-Host 'Choose React and either JavaScript or TypeScript. SLMN App installs Tailwind CSS, GSAP, Three.js, and React Icons, then replaces the default Vite page with a working demo.' -ForegroundColor Cyan
-    npm create vite@latest $name -- --no-immediate
+    if ($projectName -ne $name) {
+        Write-Host "Using project folder name: $projectName" -ForegroundColor DarkGray
+    }
+    Write-Host 'Creating the React JavaScript SLMN App, then installing Tailwind CSS, GSAP, Three.js, and React Icons.' -ForegroundColor Cyan
+    npx --yes create-vite@latest $projectName --no-interactive --no-immediate --template react
     if ($LASTEXITCODE -ne 0) {
         throw "Vite setup failed for '$name'."
     }
 
     if (-not (Test-ProjectDependency -Path $path -Name 'react')) {
-        throw "Full starter requires React. Create the project again and choose React in Vite's framework prompt."
+        throw 'Full starter requires the React template, but Vite did not create it.'
     }
 
     Push-Location $path
@@ -1164,7 +1462,7 @@ function slmn-app {
         if (Test-Path -LiteralPath (Join-Path $path 'src/App.tsx')) {
             Invoke-NpmDevInstall @types/three
         }
-        Set-FullDemoPage -Path $path -Name $name
+        Set-FullDemoPage -Path $path -Name $projectName
     } finally {
         Pop-Location
     }
@@ -1181,7 +1479,22 @@ function full-app {
 }
 
 # -----------------------------
-# 9. INTERACTIVE NEXT.JS
+# 11. STARTER MENU
+# -----------------------------
+function slmn-starter {
+    $command = Select-StarterCommand
+    Clear-Host
+    Write-Host "Selected: $command" -ForegroundColor Cyan
+    $name = Read-Host 'Project name'
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        throw 'A project name is required.'
+    }
+
+    & $command $name.Trim()
+}
+
+# -----------------------------
+# 12. INTERACTIVE NEXT.JS
 # -----------------------------
 function next-app {
     param([Parameter(Mandatory)][string]$name)

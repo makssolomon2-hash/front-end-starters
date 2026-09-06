@@ -10,17 +10,31 @@
 
 PowerShell commands for creating clean frontend projects on your Desktop. `slmn-app` is the flagship starter: a complete, removable React technology demo. The other commands are focused alternatives for smaller starting points.
 
+## Quick Start
+
+Open PowerShell in the folder containing `starters.ps1`, then run:
+
+```powershell
+. .\starters.ps1
+slmn-starter
+```
+
+`slmn-starter` opens the menu. Use the Up and Down arrow keys to choose a starter, press Enter, type the project name, and press Enter again.
+
 ## What Is Included
 
 | Command | Stack | Initial project |
 | --- | --- | --- |
-| `slmn-app "my-app"` | Vite, React, Tailwind CSS v4, GSAP, Three.js, React Icons | **Flagship:** interactive React selection, then a removable SLMN technology demo |
-| `vanilla-project "my-site"` | HTML, CSS, JavaScript | A dark page with one centered heading and linked `js/main.js` |
+| `slmn-app "my-app"` | Vite, React JavaScript, Tailwind CSS v4, GSAP, Three.js, React Icons | **Flagship:** creates a removable SLMN technology demo with no setup prompts |
+| `slmn-starter` | Starter menu | Choose any starter with Up/Down arrows, then enter a project name |
+| `vanilla-project "my-site"` | HTML, CSS, JavaScript | A dark page with one centered heading and linked `js/script.js` |
 | `tailwind-project "my-site"` | Vite, Tailwind CSS v4 | Dark static HTML with a centered heading and custom Tailwind screens |
 | `gsap-project "my-site"` | HTML, CSS, JavaScript, GSAP CDN | One heading with a small entrance animation |
 | `tailwind-gsap-project "my-site"` | Vite, Tailwind CSS v4, GSAP | Dark static HTML with one animated heading |
-| `react-project "my-site"` | Vite, React | A dark page with a minimal `useState` counter |
-| `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | A dark animated React heading and `useState` counter |
+| `react-project "my-site"` | Vite, React | Removable React technology preview linking to Vite, React, and JavaScript |
+| `react-tailwind-project "my-site"` | Vite, React, Tailwind CSS v4 | Removable React preview linking to Vite, React, JavaScript, and Tailwind CSS |
+| `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | Removable React preview with GSAP entrance motion and stack-specific links |
+| `react-tailwind-gsap-three-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP, Three.js, React Icons | Full removable React technology demo with the interactive Three.js model |
 | `vite-app "my-app"` | Vite | Official Vite prompts, then optional Tailwind CSS, GSAP, and Three.js |
 | `full-app "my-demo"` | Alias for `slmn-app` | Backwards-compatible name for the flagship starter |
 | `next-app "my-next-app"` | Next.js | Official Create Next App prompts, then optional GSAP and Three.js |
@@ -45,13 +59,36 @@ code --version
 
 ## Install
 
-From this folder, load the functions into the current PowerShell session:
+### Use Once
+
+Get the folder in either of these ways:
+
+- **ZIP:** Download the repository ZIP from GitHub and use **Extract All**. Open the extracted `STARTER` folder in File Explorer, right-click empty space, and choose **Open in Terminal**.
+- **Git:** Clone the repository, then enter its folder:
+
+```powershell
+git clone https://github.com/<your-account>/<your-repository>.git
+cd <your-repository>
+```
+
+Confirm that PowerShell is in the folder containing `starters.ps1`:
+
+```powershell
+Get-Location
+Test-Path .\starters.ps1
+```
+
+The last command must return `True`. Then load the functions into the current PowerShell session:
 
 ```powershell
 . .\starters.ps1
 ```
 
-The leading `.` is important: it dot-sources the script, making the starter commands available in the current terminal.
+The leading `.` is important: it dot-sources the script, making the starter commands available in the current terminal. A ZIP downloaded from the internet can be blocked by Windows; unblock it first when needed:
+
+```powershell
+Unblock-File .\starters.ps1
+```
 
 If PowerShell blocks local scripts for the current terminal only, run this first:
 
@@ -60,42 +97,47 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 . .\starters.ps1
 ```
 
-To make the commands available in every new PowerShell session, add this line to your PowerShell profile once:
+### Install For Every New Terminal
 
-```powershell
-. "$HOME\Desktop\STARTER\starters.ps1"
-```
-
-Create the profile first when it does not exist:
+Keep the extracted or cloned folder in a location you will not move or delete. From that folder, run these commands once:
 
 ```powershell
 New-Item -ItemType Directory -Path (Split-Path $PROFILE) -Force
 New-Item -ItemType File -Path $PROFILE -Force
+$startersPath = (Resolve-Path .\starters.ps1).Path
+Add-Content -LiteralPath $PROFILE -Value ". '$startersPath'"
 ```
+
+Close and reopen PowerShell, then verify the command is available:
+
+```powershell
+Get-Command slmn-starter
+```
+
+This saves the actual location of the extracted or cloned script instead of assuming `Desktop\STARTER`. If you later move the folder, run the four persistent-install commands again from its new location. To remove automatic loading later, open the profile with `notepad $PROFILE` and delete the line that starts with `. '`.
 
 ## Create A Project
 
 After loading `starters.ps1`, run one command:
 
 ```powershell
+slmn-starter
 vanilla-project "my-site"
 tailwind-project "tailwind-demo"
 gsap-project "gsap-hero"
 tailwind-gsap-project "animated-site"
 react-project "portfolio"
+react-tailwind-project "tailwind-app"
 react-tailwind-gsap-project "motion-app"
+react-tailwind-gsap-three-project "three-app"
 slmn-app "my-app"
 vite-app "my-app"
 next-app "my-next-app"
 ```
 
-Projects are created at `Desktop\<project-name>`. Vite-based starters scaffold, install npm packages, replace the default files, and then open the finished project in VS Code. They use Vite's non-interactive mode, so no development server is started while the project is being created.
+`slmn-starter` shows every starter, including `slmn-app`, in one menu. Use the Up and Down arrow keys to choose a starter, press Enter, type the project name, and press Enter again. Choosing `SLMN App` creates its React JavaScript project without further setup questions. Its project name is converted to a lowercase npm-safe folder name, so `APPP` becomes `appp`. Choosing Vite opens its normal framework and variant selector next.
 
-For Tailwind, Tailwind + GSAP, React, and React + Tailwind + GSAP, start the development server from the opened project:
-
-```powershell
-npm run dev
-```
+Projects are created at `Desktop\<project-name>`. Vite-based starters scaffold, install npm packages, replace the default files, and then open the finished project in VS Code. Every React starter starts `npm run dev` automatically after the project is ready.
 
 The Vanilla starter can be opened directly in a browser or served with your preferred local server. The GSAP starter loads GSAP from a CDN, so its first animation requires an internet connection.
 
@@ -105,21 +147,35 @@ Feature questions use uppercase `[Y/N]` prompts. Press `Y` or `N` once; no Enter
 
 For `vite-app`, choose the framework and variant in Vite's normal prompts. The launcher uses Vite's `--no-immediate` option, then installs your selected features and starts the server after setup. For `next-app`, answer Create Next App's normal prompts; its package installation completes before the two feature questions appear.
 
-`slmn-app` is the primary starter. It uses Vite's normal framework and variant prompts, then automatically installs Tailwind CSS, GSAP, Three.js, and React Icons. Choose **React** and either **JavaScript** or **TypeScript**. It replaces Vite's default React page with a dark SLMN technology preview: Tailwind controls the responsive layout, GSAP animates the header, and Three.js renders a mouse-controlled WebGL model. It then opens VS Code and starts the development server. `full-app` remains available as an alias.
+`slmn-app` is the primary starter. It converts the entered project name to a lowercase npm-safe folder name, then creates a React JavaScript Vite project without framework, variant, package-name, or Create Vite installation questions. It automatically installs Tailwind CSS, GSAP, Three.js, and React Icons, then replaces Vite's default React page with a dark SLMN technology preview: Tailwind controls the responsive layout, GSAP animates the header, and Three.js renders a mouse-controlled WebGL model. It then opens VS Code and starts the development server. `full-app` remains available as an alias.
 
-The preview is split into removable files: `src/App.*` is a small composition root, `src/components/Hero.*` owns the header and GSAP animation, `src/components/TechPill.*` owns the technology links and brand icons, `src/components/three/ThreeScene.*` owns the pointer-controlled model, and `src/styles/demo.css` contains preview-specific styles. Vite, React, JavaScript, Tailwind CSS, GSAP, and Three.js cards link to their official sites or primary documentation in a new browser tab.
+## Share With Others
+
+Share the whole `STARTER` folder, including `starters.ps1` and `README.md`. The recipient can place it anywhere, open PowerShell in that folder, and follow the **Install** section above.
+
+For GitHub, create a repository, commit these two files, and share the repository URL. A recipient can then run:
+
+```powershell
+git clone https://github.com/<your-account>/<your-repository>.git
+cd <your-repository>
+. .\starters.ps1
+```
+
+They need Node.js, npm, and optionally the VS Code `code` command installed as described in **Requirements**.
+
+Every React preview is split into removable files: `src/App.jsx` is a small composition root, `src/components/Hero.jsx` owns the header and optional GSAP animation, `src/components/TechPill.jsx` owns the stack-specific technology links, and `src/styles/demo.css` contains preview-specific styles. The React + Tailwind + GSAP + Three.js starter and `slmn-app` additionally include `src/components/three/ThreeScene.jsx`. Cards link only to tools installed by that starter and open their official sites or primary documentation in a new browser tab.
 
 To replace the preview with your application:
 
 1. In `src/App.*`, remove the `Hero` and `demo.css` imports.
 2. Replace `<Hero />` inside `<main className="app-shell">` with your own components.
-3. Delete `src/components/Hero.*`, `src/components/TechPill.*`, `src/components/three`, and `src/styles/demo.css`.
+3. Delete `src/components/Hero.jsx`, `src/components/TechPill.jsx`, and `src/styles/demo.css`. Delete `src/components/three` for the Three.js starter as well.
 4. Keep `src/styles/app.css`; it provides the permanent application shell.
-5. Run `npm uninstall gsap three react-icons` when you do not plan to use those preview-only packages.
+5. Run `npm uninstall gsap`, `npm uninstall three react-icons`, or both when you do not plan to use those preview-only packages.
 
 ## Responsive Screens
 
-Tailwind starters replace Tailwind's default screens with these project-specific names:
+Tailwind's initial breakpoint names and values stay available. The starters add these extra screen names; they do not replace Tailwind's defaults:
 
 | Screen | Width | Example |
 | --- | --- | --- |
@@ -137,9 +193,9 @@ The goal is a clean place to begin, not a sample app:
 
 - Every starter begins with a modern charcoal `#171717` background and white text. There is no light/dark toggle.
 - Vanilla and GSAP use only an HTML entry point, CSS, and linked JavaScript. Their JavaScript logs `Page loaded` in the browser console.
-- Tailwind and Tailwind + GSAP keep their `<main>` and `<h1>` directly in `index.html`; `src/main.js` only loads CSS and, when applicable, runs GSAP.
-- React uses only `src/main.jsx`, `src/App.jsx`, and `src/index.css` in addition to Vite and npm files. It starts with a small `useState` count button.
-- React + Tailwind + GSAP combines the custom screens, title entrance animation, and the same small React counter.
+- Tailwind and Tailwind + GSAP keep their `<main>` and `<h1>` directly in `index.html`; `src/script.js` only loads CSS and, when applicable, runs GSAP.
+- Every React starter uses a small `App.jsx` composition root and places its removable preview in `src/components/Hero.jsx`, `src/components/TechPill.jsx`, and `src/styles/demo.css`. Each preview lists links only for tools installed by that starter.
+- React + Tailwind + GSAP + Three.js uses the richer `ThreeScene` component from the flagship demo.
 - The full React demo keeps `App` intentionally small and places the Three.js preview in `src/components/three/ThreeScene.*`; moving the pointer over its canvas rotates the model.
 - JavaScript and React entries log `Page loaded` in the browser console.
 
