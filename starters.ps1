@@ -370,10 +370,13 @@ function Set-StaticStarterScreen {
                     </a>
 "@
     }) -join "`n"
-    $scriptTag = if ($UseVite) { '<script type="module">import("/src/slmn-start/main.js" /* @vite-ignore */).catch(() => {})</script>' } else { '<script src="./js/slmn-start/main.js" defer></script>' }
-    $stylesheetLink = if ($UseVite) { '' } else { '    <link rel="stylesheet" href="./js/slmn-start/style.css">' }
-    $gsapScript = if ($UseGsap -and -not $UseVite) { '    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>' } else { '' }
+    $rootStylesheetHref = if ($UseVite) { '/src/style.css' } else { './css/style.css' }
+    $rootScriptTag = if ($UseVite) { '<script type="module" src="/src/script.js"></script>' } else { '<script src="./js/script.js" defer></script>' }
+    $demoScriptTag = if ($UseVite) { '<script type="module" src="./main.js"></script>' } else { '<script src="./main.js" defer></script>' }
+    $demoGsapScript = if ($UseGsap -and -not $UseVite) { '    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>' } else { '' }
     $screenClass = if ($UseGsap) { 'slmn-start slmn-use-gsap' } else { 'slmn-start' }
+    $startDirectory = Join-Path $Path 'slmn-start'
+    New-Item -ItemType Directory -Path $startDirectory -Force | Out-Null
 
     @"
 <!doctype html>
@@ -382,10 +385,28 @@ function Set-StaticStarterScreen {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>$Name</title>
-$stylesheetLink
+    <link rel="stylesheet" href="$rootStylesheetHref">
 </head>
 <body>
-    <main class="$screenClass" hidden>
+    <main class="slmn-project-root">
+        <h1>$Name</h1>
+    </main>
+    $rootScriptTag
+</body>
+</html>
+"@ | Set-Content -LiteralPath (Join-Path $Path 'index.html') -Encoding utf8
+
+    @"
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$Name - SLMN Start Screen</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <main class="$screenClass">
         <section class="slmn-screen">
             <div class="slmn-copy">
                 <p class="slmn-kicker" data-slmn-reveal>SLMN Starter</p>
@@ -409,11 +430,54 @@ $technologyCards
             </div>
         </section>
     </main>
-$gsapScript
-    $scriptTag
+$demoGsapScript
+    $demoScriptTag
 </body>
 </html>
-"@ | Set-Content -LiteralPath (Join-Path $Path 'index.html') -Encoding utf8
+"@ | Set-Content -LiteralPath (Join-Path (Join-Path $Path 'slmn-start') 'index.html') -Encoding utf8
+
+    @'
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    color: #171717;
+    background: #ffffff;
+    font-family: "Aptos", "Segoe UI", sans-serif;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.slmn-project-root {
+    display: grid;
+    min-height: 100svh;
+    padding: 20px;
+    place-items: center;
+}
+
+.slmn-project-root h1 {
+    margin: 0;
+    font-size: clamp(2rem, 5vw, 4rem);
+    font-weight: 600;
+}
+'@ | ForEach-Object {
+        $rootStylesheetPath = Join-Path $Path $(if ($UseVite) { 'src/style.css' } else { 'css/style.css' })
+        New-Item -ItemType Directory -Path (Split-Path -Parent $rootStylesheetPath) -Force | Out-Null
+        Set-Content -LiteralPath $rootStylesheetPath -Value $_ -Encoding utf8
+    }
+
+    $rootScriptPath = Join-Path $Path $(if ($UseVite) { 'src/script.js' } else { 'js/script.js' })
+    $rootScript = if ($UseVite) { "import './style.css'`n" } else { "document.documentElement.dataset.slmnStarter = 'ready'`n" }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $rootScriptPath) -Force | Out-Null
+    Set-Content -LiteralPath $rootScriptPath -Value $rootScript -Encoding utf8
+
+    $legacyStartDirectory = Join-Path $Path $(if ($UseVite) { 'src/slmn-start' } else { 'js/slmn-start' })
+    Remove-Item -LiteralPath $legacyStartDirectory -Recurse -Force -ErrorAction SilentlyContinue
 
     @'
 * {
@@ -434,9 +498,11 @@ body {
 
 .slmn-start {
     display: grid;
+    width: 100%;
     min-height: 100svh;
-    padding: clamp(1rem, 2.5vw, 2rem);
+    padding: 20px;
     place-items: center;
+    text-align: left;
     background-color: #171717;
     background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
     background-size: 3rem 3rem;
@@ -444,9 +510,11 @@ body {
 
 .slmn-screen {
     display: grid;
-    width: min(100%, 72rem);
-    min-height: min(48rem, calc(100svh - 2rem));
+    width: 100%;
+    max-width: 72rem;
+    min-height: min(30rem, calc(100svh - 40px));
     padding: 0;
+    margin: 0 auto;
     align-items: center;
     gap: 2.5rem;
 }
@@ -680,7 +748,7 @@ body {
     }
 }
 '@ | ForEach-Object {
-        $startDirectory = Join-Path $Path $(if ($UseVite) { 'src/slmn-start' } else { 'js/slmn-start' })
+    $startDirectory = Join-Path $Path 'slmn-start'
         $stylesheetPath = Join-Path $startDirectory 'style.css'
         New-Item -ItemType Directory -Path (Split-Path -Parent $stylesheetPath) -Force | Out-Null
         Set-Content -LiteralPath $stylesheetPath -Value $_ -Encoding utf8
@@ -1078,8 +1146,8 @@ export default function Hero() {
     }, [])
 
     return (
-        <section className="demo-shell px-4 py-10 text-white tab:px-8">
-            <header ref={heroRef} className="demo-grid mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 lap:grid-cols-[1fr_0.9fr]">
+        <section className="demo-shell p-5 text-white">
+            <header ref={heroRef} className="demo-grid mx-auto grid items-center gap-8 lap:grid-cols-[1fr_0.9fr]">
                 <div>
                     <p data-demo-reveal className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-blue-300">
                         SLMN React Starter
@@ -1229,13 +1297,21 @@ export default function ThreeScene() {
 @'
 #root,
 .app-shell {
-    min-height: 100vh;
+    width: 100%;
+    min-height: 100svh;
+}
+
+#root {
+    max-width: none;
+    padding: 0;
+    margin: 0;
 }
 '@ | Set-Content -LiteralPath (Join-Path $stylesPath 'app.css') -Encoding utf8
 
 @'
 .demo-shell {
     min-height: 100vh;
+    text-align: left;
     background-color: #171717;
     background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
     background-size: 3rem 3rem;
@@ -1243,6 +1319,8 @@ export default function ThreeScene() {
 
 .demo-grid {
     position: relative;
+    width: min(100%, 72rem);
+    min-height: min(30rem, calc(100svh - 40px));
 }
 
 .demo-tech-pill {
@@ -1490,7 +1568,24 @@ export default function StarterVisual() {
     @'
 #root,
 .app-shell {
-    min-height: 100vh;
+    width: 100%;
+    min-height: 100svh;
+}
+
+html,
+body {
+    min-width: 320px;
+    min-height: 100svh;
+    margin: 0;
+    background-color: #171717;
+    background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+}
+
+#root {
+    max-width: none;
+    padding: 0;
+    margin: 0;
 }
 '@ | Set-Content -LiteralPath (Join-Path $stylesPath 'app.css') -Encoding utf8
 
@@ -1498,10 +1593,12 @@ export default function StarterVisual() {
 .demo-shell {
     box-sizing: border-box;
     display: grid;
+    width: 100%;
     min-height: 100svh;
-    padding: clamp(1rem, 2.5vw, 2rem);
+    padding: 20px;
     place-items: center;
     color: #ffffff;
+    text-align: left;
     background-color: #171717;
     background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
     background-size: 3rem 3rem;
@@ -1509,8 +1606,9 @@ export default function StarterVisual() {
 
 .demo-grid {
     display: grid;
-    width: min(100%, 72rem);
-    min-height: min(48rem, calc(100svh - 2rem));
+    width: 100%;
+    max-width: 72rem;
+    min-height: min(30rem, calc(100svh - 40px));
     padding: 0;
     margin: 0 auto;
     align-items: center;
@@ -1968,11 +2066,23 @@ export default function Home() {
     box-sizing: border-box;
 }
 
+html,
+body {
+    min-width: 320px;
+    min-height: 100svh;
+    margin: 0;
+    background-color: #171717;
+    background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 3rem 3rem;
+}
+
 .slmn-next-shell {
     display: grid;
+    width: 100%;
     min-height: 100svh;
-    padding: clamp(1rem, 2.5vw, 2rem);
+    padding: 20px;
     color: #ffffff;
+    text-align: left;
     background-color: #171717;
     background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
     background-size: 3rem 3rem;
@@ -1981,9 +2091,11 @@ export default function Home() {
 
 .slmn-next-screen {
     display: grid;
-    width: min(100%, 72rem);
-    min-height: min(48rem, calc(100svh - 2rem));
+    width: 100%;
+    max-width: 72rem;
+    min-height: min(30rem, calc(100svh - 40px));
     padding: 0;
+    margin: 0 auto;
     align-items: center;
     gap: 2.5rem;
 }

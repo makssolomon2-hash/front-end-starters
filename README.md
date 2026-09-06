@@ -8,11 +8,11 @@
 
 # SLMN Frontend Starters
 
-PowerShell commands for creating clean frontend projects in your configured projects folder. Every compatible starter now begins with a removable, full-screen SLMN screen: linked technology cards, a pointer-reactive blue `S` signal, and only the libraries actually used by that project. The layout uses a centered content frame with responsive outer padding. `slmn-app` remains the flagship React, GSAP, and Three.js version with the interactive 3D model.
+PowerShell commands for creating clean frontend projects in your configured projects folder. Non-React starters provide a clean, connected root page plus a removable full-screen SLMN demo with linked technology cards and a pointer-reactive blue `S` signal. React and Next.js starters open with the removable screen. The layout uses a centered content frame with responsive outer padding. `slmn-app` remains the flagship React, GSAP, and Three.js version with the interactive 3D model.
 
 ## Current Release
 
-- Full-screen charcoal start screens across Vanilla, Tailwind, GSAP, React, compatible interactive Vite templates, and Next.js App Router projects.
+- A self-contained full-screen charcoal demo across Vanilla, Tailwind, GSAP, compatible interactive Vite templates, React, and Next.js App Router projects.
 - Linked cards list only the project's installed technologies.
 - A responsive, pointer-reactive blue `S` panel replaces the flagship Three.js scene in starters that do not include Three.js.
 - Native CSS provides entrance motion by default. GSAP starters use GSAP for that reveal instead.
@@ -348,15 +348,13 @@ cd front-end-starters
 
 They need Node.js, npm, and optionally the VS Code `code` command installed as described in **Requirements**.
 
-## Start Screens And Removal
+## Start Screens and Removal
 
-Every compatible starter begins with the same charcoal full-screen composition: project copy and technology links alongside a blue `S` signal display. The display follows pointer movement with native browser events; it is not a Three.js scene. GSAP-enabled starters use GSAP for the entrance reveal, while the rest use CSS-only motion. The flagship and full Three.js starter use their WebGL visual instead.
+Every compatible screen uses the same charcoal full-screen composition: project copy and technology links alongside a blue `S` signal display. The display follows pointer movement with native browser events; it is not a Three.js scene. GSAP-enabled starters use GSAP for the entrance reveal, while the rest use CSS-only motion. The flagship and full Three.js starter use their WebGL visual instead.
 
 Each technology card links to its official documentation and is rendered only when that technology belongs to the project.
 
-**Vanilla and GSAP:** delete the `js/slmn-start` directory to remove the whole preview. The initially hidden screen stays blank when its startup files are gone, ready for your own markup.
-
-**Tailwind and Tailwind + GSAP:** delete the `src/slmn-start` directory to remove the whole preview. The guarded loader in `index.html` then leaves a blank, buildable page ready for your own markup.
+**Vanilla, GSAP, Tailwind, and Tailwind + GSAP:** the permanent root files are `index.html`, a connected root stylesheet, and a connected root script. The complete optional demo is isolated in `slmn-start`: open `slmn-start/index.html` to view it, or delete that one folder to remove it. Your root entry remains a clean, working starter immediately.
 
 **React, React + Tailwind, and React + Tailwind + GSAP:** replace `src/App.*`, then delete `src/components/Hero.*`, `src/components/TechPill.*`, `src/components/StarterVisual.*`, and `src/styles/demo.css`. `src/styles/app.css` only supplies the root minimum height and can be kept or deleted with the screen.
 
@@ -384,8 +382,8 @@ Vanilla, GSAP, and React generate matching mobile-first CSS media queries at the
 
 The goal is a clean place to begin, not a sample app:
 
-- Every compatible screen uses a charcoal `#171717` full-height layout without a capped outer container, linked technology cards, and a pointer-reactive blue `S` visual without adding Three.js where it was not requested.
-- Vanilla and GSAP keep all preview assets in `js/slmn-start`. Tailwind and Tailwind + GSAP keep them in `src/slmn-start`. Deleting either directory removes the preview without breaking the project entry page; the Vite entry uses a guarded loader and the plain HTML entry begins hidden until its startup script runs.
+- Non-React root entries are clean, connected project foundations. Their optional charcoal `#171717` full-height SLMN demo is self-contained in the root `slmn-start` directory, with linked technology cards and a pointer-reactive blue `S` visual. Deleting that directory cannot break the root page.
+- Vanilla and GSAP root assets are `index.html`, `css/style.css`, and `js/script.js`. Tailwind, Tailwind + GSAP, and compatible interactive Vite vanilla assets are `index.html`, `src/style.css`, and `src/script.js`. Every non-React demo has its own `slmn-start/index.html`, `slmn-start/style.css`, and `slmn-start/main.js`.
 - React screens use `src/App.*` as a small composition root and keep the full demo in `src/components/Hero.*`, `src/components/TechPill.*`, `src/components/StarterVisual.*`, and `src/styles/demo.css`.
 - GSAP controls the screen entrance only in starters that install it; all other screen motion is native CSS and browser events.
 - React + Tailwind + GSAP + Three.js and `slmn-app` use the richer `src/components/three/ThreeScene.*` WebGL visual instead of `StarterVisual`.
