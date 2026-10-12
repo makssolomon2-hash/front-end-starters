@@ -1,3 +1,4 @@
+# >>> SLMN PROFILE SCRIPT BEGIN >>>
 # ============================================
 # SLMN FRONTEND STARTERS
 # ============================================
@@ -99,22 +100,63 @@ function slmn-config {
         return
     }
 
-    if ($Setting -ine 'path') {
-        throw 'Supported setting: path. Examples: slmn-config path "D:\Projects" or slmn-config path desktop'
-    }
-    if ([string]::IsNullOrWhiteSpace($Value)) {
-        throw 'Provide a projects path. Example: slmn-config path "D:\Projects"'
+    if ($Setting -ieq 'path' -or $Setting -ieq 'projectsPath') {
+        if ([string]::IsNullOrWhiteSpace($Value)) {
+            throw 'Provide a projects path. Example: slmn-config path "D:\Projects"'
+        }
+
+        $configuration.projectsPath = if ($Value -ieq 'desktop') { '%USERPROFILE%\Desktop' } else { $Value.Trim() }
+        Get-SlmnProjectsPath -OverridePath $configuration.projectsPath | Out-Null
+        $configuration | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $configPath -Encoding utf8
+        Write-Host "SLMN projects path: $(Get-SlmnProjectsPath)" -ForegroundColor Green
+        return
     }
 
-    $configuration.projectsPath = if ($Value -ieq 'desktop') { '%USERPROFILE%\Desktop' } else { $Value.Trim() }
-    Get-SlmnProjectsPath -OverridePath $configuration.projectsPath | Out-Null
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw "Provide a value for '$Setting'. Use true/false, yes/no, or on/off."
+    }
+
+    $propertyName = if ($Setting -ieq 'openInVSCode') {
+        'openInVSCode'
+    } elseif ($Setting -ieq 'autoStartDev') {
+        'autoStartDev'
+    } else {
+        throw 'Supported settings: path, openInVSCode, autoStartDev.'
+    }
+
+    $booleanValue = switch ($Value.Trim().ToLowerInvariant()) {
+        { $_ -in @('true', 'yes', 'on', '1') } { $true; break }
+        { $_ -in @('false', 'no', 'off', '0') } { $false; break }
+        default { throw "Invalid value '$Value'. Use true/false, yes/no, or on/off." }
+    }
+    $configuration.$propertyName = $booleanValue
     $configuration | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $configPath -Encoding utf8
-    Write-Host "SLMN projects path: $(Get-SlmnProjectsPath)" -ForegroundColor Green
+    Write-Host "$propertyName`: $booleanValue" -ForegroundColor Green
 }
 
 function Get-SlmnProfilePath {
-    # $PROFILE identifies PowerShell's per-user profile scripts. All Hosts loads in PowerShell,
-    # Windows Terminal, and VS Code, unlike a host-specific profile such as $PROFILE.CurrentUserCurrentHost.
+    $profilePaths = @($PROFILE, $PROFILE.CurrentUserAllHosts) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+    $sourcePath = $script:SlmnSourcePath
+    if (-not [string]::IsNullOrWhiteSpace($sourcePath) -and (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        $resolvedSourcePath = (Resolve-Path -LiteralPath $sourcePath).Path
+        foreach ($profilePath in $profilePaths) {
+            $resolvedProfilePath = (Resolve-Path -LiteralPath $profilePath -ErrorAction SilentlyContinue).Path
+            if ($resolvedSourcePath -ieq $resolvedProfilePath) {
+                return $resolvedProfilePath
+            }
+        }
+    }
+
+    foreach ($profilePath in $profilePaths) {
+        if (-not (Test-Path -LiteralPath $profilePath -PathType Leaf)) {
+            continue
+        }
+        $content = Get-Content -LiteralPath $profilePath -Raw
+        if ($content -match '(?m)# >>> SLMN PROFILE SCRIPT BEGIN >>>|# SLMN FRONTEND STARTERS|^\s*\.\s+["'']?\$env:USERPROFILE\\\.slmn\\starters\.ps1') {
+            return (Resolve-Path -LiteralPath $profilePath).Path
+        }
+    }
+
     return $PROFILE.CurrentUserAllHosts
 }
 
@@ -225,6 +267,42 @@ function Set-SlmnProfileLoader {
     Add-Content -LiteralPath $profilePath -Value '. "$env:USERPROFILE\.slmn\starters.ps1"'
 }
 
+function Set-SlmnProfileScript {
+    param([Parameter(Mandatory)][string]$ScriptPath)
+
+    $profilePath = Get-SlmnProfilePath
+    if (-not (Test-Path -LiteralPath $profilePath -PathType Leaf)) {
+        return $false
+    }
+
+    $profileText = [System.IO.File]::ReadAllText($profilePath)
+    $beginMatches = [regex]::Matches($profileText, '(?m)^# >>> SLMN PROFILE SCRIPT BEGIN >>>[ \t]*\r?$')
+    $endMatches = [regex]::Matches($profileText, '(?m)^# <<< SLMN PROFILE SCRIPT END <<<[ \t]*\r?$')
+    if ($beginMatches.Count -gt 0 -or $endMatches.Count -gt 0) {
+        if ($beginMatches.Count -ne 1 -or $endMatches.Count -ne 1 -or $endMatches[0].Index -lt $beginMatches[0].Index) {
+            throw "The SLMN markers in $profilePath are incomplete or out of order."
+        }
+
+        $beginIndex = $beginMatches[0].Index
+        $endOfMarkerLine = $profileText.IndexOf("`n", $endMatches[0].Index + $endMatches[0].Length, [StringComparison]::Ordinal)
+        $suffixStart = if ($endOfMarkerLine -ge 0) { $endOfMarkerLine + 1 } else { $profileText.Length }
+        $updatedProfile = $profileText.Substring(0, $beginIndex) +
+            [System.IO.File]::ReadAllText($ScriptPath) +
+            $profileText.Substring($suffixStart)
+        [System.IO.File]::WriteAllText($profilePath, $updatedProfile, [System.Text.UTF8Encoding]::new($true))
+        return $true
+    }
+
+    $legacyStandaloneScript = $profileText -match '\A\s*# =+\r?\n# SLMN FRONTEND STARTERS\r?\n' -and
+        $profileText -match '(?is)function\s+(?:next-ts-app|next-app)\s*\{.*?Complete-InteractiveProject\s+-Path\s+\$path\s+-Name\s+\$name\s+-Stack\s+Next\s*\}\s*\z'
+    if ($legacyStandaloneScript) {
+        [System.IO.File]::WriteAllText($profilePath, [System.IO.File]::ReadAllText($ScriptPath), [System.Text.UTF8Encoding]::new($true))
+        return $true
+    }
+
+    return $false
+}
+
 function slmn-install {
     $sourcePath = $script:SlmnSourcePath
     if ([string]::IsNullOrWhiteSpace($sourcePath) -or -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
@@ -240,10 +318,17 @@ function slmn-install {
 
     $installedScriptPath = Set-SlmnInstallationFiles -SourcePath $sourcePath
     Initialize-SlmnStorage | Out-Null
-    Set-SlmnProfileLoader
+    $profileScriptUpdated = Set-SlmnProfileScript -ScriptPath $installedScriptPath
+    if (-not $profileScriptUpdated) {
+        Set-SlmnProfileLoader
+    }
     $script:SlmnSourcePath = $installedScriptPath
 
-    Write-Host 'SLMN installed. The profile now loads the managed copy from ~/.slmn.' -ForegroundColor Green
+    if ($profileScriptUpdated) {
+        Write-Host 'SLMN installed. The script in your PowerShell profile was refreshed in place.' -ForegroundColor Green
+    } else {
+        Write-Host 'SLMN installed. The profile now loads the managed copy from ~/.slmn.' -ForegroundColor Green
+    }
     Write-Host 'Open a new PowerShell terminal to use the installed commands everywhere.' -ForegroundColor Green
 }
 
@@ -270,13 +355,25 @@ function slmn-update {
 
     $installedScriptPath = Set-SlmnInstallationFiles -SourcePath $SourcePath
     Initialize-SlmnStorage | Out-Null
-    Set-SlmnProfileLoader
+    $profileScriptUpdated = Set-SlmnProfileScript -ScriptPath $installedScriptPath
+    if (-not $profileScriptUpdated) {
+        Set-SlmnProfileLoader
+        $profilePath = Get-SlmnProfilePath
+        if ((Test-Path -LiteralPath $profilePath -PathType Leaf) -and
+            (Get-Content -LiteralPath $profilePath -Raw) -match '# SLMN FRONTEND STARTERS') {
+            Write-Warning "The installed copy was updated, but $profilePath contains an unmarked SLMN script mixed with other profile code. The managed loader was added after it; add the SLMN begin/end markers around the script to enable in-place profile updates."
+        }
+    }
     $script:SlmnSourcePath = $installedScriptPath
 
-    if ([string]::IsNullOrWhiteSpace($SourcePath)) {
-        Write-Host 'SLMN updated from the official GitHub main branch.' -ForegroundColor Green
+    if ($profileScriptUpdated) {
+        Write-Host 'SLMN updated. The full script in your PowerShell profile was refreshed in place.' -ForegroundColor Green
     } else {
-        Write-Host "SLMN updated from '$SourcePath'." -ForegroundColor Green
+        if ([string]::IsNullOrWhiteSpace($SourcePath)) {
+            Write-Host 'SLMN updated from the official GitHub main branch.' -ForegroundColor Green
+        } else {
+            Write-Host "SLMN updated from '$SourcePath'." -ForegroundColor Green
+        }
     }
     Write-Host 'Open a new PowerShell terminal to load the updated commands.' -ForegroundColor Green
 }
@@ -290,10 +387,17 @@ function Get-SlmnHotkeysStartupShortcutPath {
 }
 
 function slmn-install-hotkeys {
-    $sourceDirectory = Split-Path -Parent $script:SlmnSourcePath
-    $sourcePath = Join-Path $sourceDirectory 'slmn-hotkeys.ahk'
+    $hotkeysPath = Get-SlmnHotkeysPath
+    $sourcePath = $hotkeysPath
     if (-not (Test-Path -LiteralPath $sourcePath)) {
-        throw "slmn-hotkeys.ahk was not found next to starters.ps1: $sourcePath"
+        if ([string]::IsNullOrWhiteSpace($script:SlmnSourcePath)) {
+            throw 'slmn-hotkeys.ahk was not found in the managed install or next to starters.ps1.'
+        }
+        $sourceDirectory = Split-Path -Parent $script:SlmnSourcePath
+        $sourcePath = Join-Path $sourceDirectory 'slmn-hotkeys.ahk'
+        if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+            throw "slmn-hotkeys.ahk was not found in the managed install or next to starters.ps1: $sourcePath"
+        }
     }
 
     $autoHotkeyCommand = Get-Command AutoHotkey64.exe, AutoHotkey.exe -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -310,9 +414,10 @@ function slmn-install-hotkeys {
         throw 'AutoHotkey v2 was not found. Install it from https://www.autohotkey.com/ and run slmn-install-hotkeys again.'
     }
 
-    $hotkeysPath = Get-SlmnHotkeysPath
     New-Item -ItemType Directory -Path (Get-SlmnInstallDirectory) -Force | Out-Null
-    Copy-Item -LiteralPath $sourcePath -Destination $hotkeysPath -Force
+    if ((Resolve-Path -LiteralPath $sourcePath).Path -ine (Resolve-Path -LiteralPath $hotkeysPath -ErrorAction SilentlyContinue).Path) {
+        Copy-Item -LiteralPath $sourcePath -Destination $hotkeysPath -Force
+    }
 
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut((Get-SlmnHotkeysStartupShortcutPath))
@@ -1364,6 +1469,87 @@ function Confirm-Feature {
     }
 }
 
+function Show-SlmnSettings {
+    $selectedIndex = 0
+
+    while ($true) {
+        $configuration = Get-SlmnConfiguration
+        $items = @(
+            @{ Label = 'Projects folder'; Value = $configuration.projectsPath; Action = 'path' },
+            @{ Label = 'Open projects in VS Code'; Value = if ($configuration.openInVSCode) { 'On' } else { 'Off' }; Action = 'openInVSCode' },
+            @{ Label = 'Start preview and open browser'; Value = if ($configuration.autoStartDev) { 'On' } else { 'Off' }; Action = 'autoStartDev' },
+            @{ Label = 'Back to starters'; Value = ''; Action = 'back' }
+        )
+
+        Clear-Host
+        Show-SlmnBanner
+        Write-Host '  Settings' -ForegroundColor White
+        Write-Host '  Use Up/Down + Enter. Esc returns to the starter list.' -ForegroundColor DarkGray
+        Write-Host ''
+
+        for ($index = 0; $index -lt $items.Count; $index++) {
+            if ($index -eq $selectedIndex) {
+                Write-Host '  > ' -NoNewline -ForegroundColor Cyan -BackgroundColor DarkBlue
+                Write-Host $items[$index].Label -NoNewline -ForegroundColor White -BackgroundColor DarkBlue
+                if (-not [string]::IsNullOrWhiteSpace($items[$index].Value)) {
+                    Write-Host "  |  $($items[$index].Value)" -ForegroundColor Cyan -BackgroundColor DarkBlue
+                } else {
+                    Write-Host ''
+                }
+            } else {
+                Write-Host '    ' -NoNewline
+                Write-Host $items[$index].Label -NoNewline -ForegroundColor White
+                if (-not [string]::IsNullOrWhiteSpace($items[$index].Value)) {
+                    Write-Host "  |  $($items[$index].Value)" -ForegroundColor DarkGray
+                } else {
+                    Write-Host ''
+                }
+            }
+        }
+
+        $keyInfo = [Console]::ReadKey($true)
+        switch ($keyInfo.Key) {
+            'UpArrow' {
+                $selectedIndex = if ($selectedIndex -eq 0) { $items.Count - 1 } else { $selectedIndex - 1 }
+            }
+            'DownArrow' {
+                $selectedIndex = if ($selectedIndex -eq ($items.Count - 1)) { 0 } else { $selectedIndex + 1 }
+            }
+            'Escape' {
+                return
+            }
+            'Enter' {
+                switch ($items[$selectedIndex].Action) {
+                    'path' {
+                        Write-Host ''
+                        Write-Host "  Current folder: $($configuration.projectsPath)" -ForegroundColor DarkGray
+                        $newPath = Read-Host '  New projects folder (Enter keeps the current folder)'
+                        if (-not [string]::IsNullOrWhiteSpace($newPath)) {
+                            slmn-config path $newPath.Trim()
+                            Start-Sleep -Milliseconds 500
+                        }
+                    }
+                    'openInVSCode' {
+                        $nextValue = -not [bool]$configuration.openInVSCode
+                        $nextValueText = $nextValue.ToString().ToLowerInvariant()
+                        slmn-config openInVSCode $nextValueText
+                        Start-Sleep -Milliseconds 500
+                    }
+                    'autoStartDev' {
+                        $nextValue = -not [bool]$configuration.autoStartDev
+                        $nextValueText = $nextValue.ToString().ToLowerInvariant()
+                        slmn-config autoStartDev $nextValueText
+                        Start-Sleep -Milliseconds 500
+                    }
+                    'back' {
+                        return
+                    }
+                }
+            }
+        }
+    }
+}
+
 function Select-StarterCommand {
     param([string]$InitialCommand)
 
@@ -1384,7 +1570,8 @@ function Select-StarterCommand {
         @{ Group = 'FRAMEWORKS'; Label = 'SLMN App (JavaScript)'; Shortcut = '8 / A'; Keys = @('8', 'a'); Badges = @(@{ Text = 'S'; Color = 'Cyan' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'slmn-app' },
         @{ Group = 'FRAMEWORKS'; Label = 'Vite (choose framework and variant)'; Shortcut = '9 / VITE'; Keys = @('9', 'vite'); Badges = @(@{ Text = 'V'; Color = 'Magenta' }); Command = 'vite-app' },
         @{ Group = 'FRAMEWORKS'; Label = 'Next.js (TypeScript)'; Shortcut = 'NTS'; Keys = @('nts'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'TS'; Color = 'Cyan' }); Command = 'next-ts-app' },
-        @{ Group = 'FRAMEWORKS'; Label = 'Next.js'; Shortcut = '0 / NEXT'; Keys = @('0', 'next'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'next-app' }
+        @{ Group = 'FRAMEWORKS'; Label = 'Next.js'; Shortcut = '0 / NEXT'; Keys = @('0', 'next'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'next-app' },
+        @{ Group = 'SETTINGS'; Label = 'Settings'; Shortcut = 'S'; Keys = @('s'); Badges = @(@{ Text = 'CONFIG'; Color = 'Cyan' }); Command = '__settings__' }
     )
     $selectedIndex = 0
     if (-not [string]::IsNullOrWhiteSpace($InitialCommand)) {
@@ -1415,17 +1602,20 @@ function Select-StarterCommand {
 
             if ($index -eq $selectedIndex) {
                 Write-Host '  > ' -NoNewline -ForegroundColor Cyan -BackgroundColor DarkBlue
-                Write-Host ("{0,2} [{1,-8}]" -f ($index + 1), $options[$index].Shortcut) -NoNewline -ForegroundColor DarkGray -BackgroundColor DarkBlue
+                Write-Host $options[$index].Label -NoNewline -ForegroundColor White -BackgroundColor DarkBlue
+                Write-Host '  | ' -NoNewline -ForegroundColor DarkGray -BackgroundColor DarkBlue
                 foreach ($badge in $options[$index].Badges) {
                     Write-Host " [$($badge.Text)]" -NoNewline -ForegroundColor $badge.Color -BackgroundColor DarkBlue
                 }
-                Write-Host "  $($options[$index].Label)" -ForegroundColor White -BackgroundColor DarkBlue
+                Write-Host "  |  $($options[$index].Shortcut)" -ForegroundColor DarkGray -BackgroundColor DarkBlue
             } else {
-                Write-Host ("    {0,2} [{1,-8}]" -f ($index + 1), $options[$index].Shortcut) -NoNewline -ForegroundColor DarkGray
+                Write-Host '    ' -NoNewline
+                Write-Host $options[$index].Label -NoNewline -ForegroundColor White
+                Write-Host '  | ' -NoNewline -ForegroundColor DarkGray
                 foreach ($badge in $options[$index].Badges) {
                     Write-Host " [$($badge.Text)]" -NoNewline -ForegroundColor $badge.Color
                 }
-                Write-Host "  $($options[$index].Label)" -ForegroundColor DarkGray
+                Write-Host "  |  $($options[$index].Shortcut)" -ForegroundColor DarkGray
             }
         }
         Write-Host ''
@@ -3589,6 +3779,1116 @@ function full-app {
 }
 
 # -----------------------------
+# 11. SLMN FULL (FULL-STACK FLAGSHIP)
+# -----------------------------
+function Write-SlmnFullFile {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$RelativePath,
+        [Parameter(Mandatory)][string]$Content
+    )
+
+    $filePath = Join-Path $Path $RelativePath
+    $directory = Split-Path -Parent $filePath
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    [System.IO.File]::WriteAllText($filePath, $Content, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Write-SlmnFullProject {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    Write-SlmnFullFile -Path $Path -RelativePath 'src/app/layout.tsx' -Content @'
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Orbit — AI workspace",
+  description: "A full-stack AI chat starter built with Next.js, Supabase, and the Vercel AI SDK.",
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+'@
+
+    Write-SlmnFullFile -Path $Path -RelativePath 'src/app/page.tsx' -Content @'
+import ChatWorkspace from "@/components/chat-workspace";
+
+export default function Home() {
+  const isConfigured =
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
+
+  if (!isConfigured) {
+    return (
+      <main className="setup-screen">
+        <div className="setup-card">
+          <span className="brand-mark">O</span>
+          <p className="eyebrow">YOUR WORKSPACE IS READY</p>
+          <h1>Connect your services to begin.</h1>
+          <p>
+            Copy <code>.env.example</code> to <code>.env.local</code>, add your Supabase
+            project URL and publishable key, then restart the dev server.
+          </p>
+          <ol>
+            <li>Create a Supabase project and run <code>database/schema.sql</code> in its SQL Editor.</li>
+            <li>Add the Supabase values and your OpenAI key to <code>.env.local</code>.</li>
+            <li>Restart with <code>npm run dev</code>.</li>
+          </ol>
+          <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Open Supabase dashboard ↗</a>
+        </div>
+      </main>
+    );
+  }
+
+  return <ChatWorkspace />;
+}
+'@
+
+    Write-SlmnFullFile -Path $Path -RelativePath 'src/lib/supabase/client.ts' -Content @'
+"use client";
+
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+let client: SupabaseClient | undefined;
+
+export function createClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) {
+    throw new Error("Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.local.");
+  }
+
+  client ??= createBrowserClient(url, key);
+  return client;
+}
+'@
+
+    Write-SlmnFullFile -Path $Path -RelativePath 'src/lib/supabase/server.ts' -Content @'
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+export async function createClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) {
+    throw new Error("Supabase is not configured. Set its URL and publishable key in .env.local.");
+  }
+
+  const cookieStore = await cookies();
+  return createServerClient(url, key, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          cookieStore.set(name, value, options);
+        });
+      },
+    },
+  });
+}
+'@
+
+    Write-SlmnFullFile -Path $Path -RelativePath 'src/app/api/chat/route.ts' -Content @'
+import { createOpenAI } from "@ai-sdk/openai";
+import { streamText } from "ai";
+import { createClient } from "@/lib/supabase/server";
+
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return Response.json({ error: "Sign in to use chat." }, { status: 401 });
+  }
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return Response.json({ error: "Request body must be valid JSON." }, { status: 400 });
+  }
+
+  if (typeof payload !== "object" || payload === null) {
+    return Response.json({ error: "A conversation ID and message are required." }, { status: 400 });
+  }
+  const { conversationId, message } = payload as { conversationId?: unknown; message?: unknown };
+  if (
+    typeof conversationId !== "string" ||
+    typeof message !== "string" ||
+    !message.trim() ||
+    message.length > 10000
+  ) {
+    return Response.json({ error: "Provide a message of 1–10,000 characters." }, { status: 400 });
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return Response.json({ error: "Set OPENAI_API_KEY in .env.local, then restart the app." }, { status: 503 });
+  }
+
+  const { data: conversation, error: conversationError } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (conversationError) {
+    console.error("Unable to verify chat ownership:", conversationError);
+    return Response.json({ error: "Could not access this conversation." }, { status: 500 });
+  }
+  if (!conversation) {
+    return Response.json({ error: "Conversation not found." }, { status: 404 });
+  }
+
+  const { error: saveUserError } = await supabase.from("messages").insert({
+    conversation_id: conversationId,
+    role: "user",
+    content: message.trim(),
+  });
+  if (saveUserError) {
+    console.error("Unable to save the user message:", saveUserError);
+    return Response.json({ error: "Could not save your message. Check the database setup." }, { status: 500 });
+  }
+
+  const { data: history, error: historyError } = await supabase
+    .from("messages")
+    .select("role, content")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (historyError) {
+    console.error("Unable to load chat history:", historyError);
+    return Response.json({ error: "Could not load conversation history." }, { status: 500 });
+  }
+
+  const openai = createOpenAI({ apiKey });
+  const result = streamText({
+    model: openai(process.env.OPENAI_MODEL || "gpt-4.1-mini"),
+    system: "You are Orbit, a thoughtful and practical AI assistant. Be clear, useful, and concise.",
+    messages: (history ?? []).reverse().map((entry) => ({
+      role: entry.role === "assistant" ? "assistant" as const : "user" as const,
+      content: entry.content,
+    })),
+  });
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let answer = "";
+      try {
+        for await (const chunk of result.textStream) {
+          answer += chunk;
+          controller.enqueue(encoder.encode(chunk));
+        }
+
+        if (answer.trim()) {
+          const { error: saveAssistantError } = await supabase.from("messages").insert({
+            conversation_id: conversationId,
+            role: "assistant",
+            content: answer,
+          });
+          if (saveAssistantError) {
+            console.error("Unable to save the assistant response:", saveAssistantError);
+            throw new Error("The response arrived, but could not be saved to chat history.");
+          }
+        }
+        controller.close();
+      } catch (error) {
+        console.error("AI response stream failed:", error);
+        controller.error(error);
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+    },
+  });
+}
+'@
+
+    Write-SlmnFullFile -Path $Path -RelativePath 'src/components/chat-workspace.tsx' -Content @'
+"use client";
+
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ArrowUp, Bot, Check, LoaderCircle, LogOut, MessageSquarePlus, Send, Sparkles } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+
+type Conversation = {
+  id: string;
+  title: string;
+  updated_at: string;
+};
+
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+};
+
+const suggestions = [
+  "Help me shape an idea into a clear product brief",
+  "Explain a tricky concept in plain language",
+  "Give me a thoughtful starting point for today",
+];
+
+export default function ChatWorkspace() {
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const skipNextLoad = useRef<string | null>(null);
+  const hasLoadedChats = useRef(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const supabase = createClient();
+  const activeConversation = conversations.find((conversation) => conversation.id === activeId);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!mounted) return;
+      if (sessionError) setError(sessionError.message);
+      setUser(data.session?.user ? { id: data.session.user.id, email: data.session.user.email } : null);
+      setAuthLoading(false);
+    }).catch((sessionError: unknown) => {
+      if (!mounted) return;
+      setError(sessionError instanceof Error ? sessionError.message : "Could not load your session.");
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ? { id: session.user.id, email: session.user.email } : null);
+      setConversations([]);
+      setActiveId(null);
+      setMessages([]);
+      hasLoadedChats.current = false;
+      setAuthLoading(false);
+      setError("");
+      setNotice("");
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    supabase
+      .from("conversations")
+      .select("id, title, updated_at")
+      .order("updated_at", { ascending: false })
+      .then(({ data, error: queryError }) => {
+        if (cancelled) return;
+        if (queryError) {
+          setError(`Could not load saved chats: ${queryError.message}`);
+          return;
+        }
+        const loaded = data ?? [];
+        setConversations(loaded);
+        if (!hasLoadedChats.current) {
+          hasLoadedChats.current = true;
+          if (loaded.length > 0) setActiveId(loaded[0].id);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, supabase]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    if (skipNextLoad.current === activeId) {
+      skipNextLoad.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    supabase
+      .from("messages")
+      .select("id, role, content")
+      .eq("conversation_id", activeId)
+      .order("created_at", { ascending: true })
+      .limit(100)
+      .then(({ data, error: queryError }) => {
+        if (cancelled) return;
+        if (queryError) {
+          setError(`Could not load messages: ${queryError.message}`);
+          return;
+        }
+        setMessages((data ?? []).map((item) => ({
+          id: item.id,
+          role: item.role === "assistant" ? "assistant" : "user",
+          content: item.content,
+        })));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, supabase]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages]);
+
+  async function handleAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = authMode === "signup"
+        ? await supabase.auth.signUp({ email, password })
+        : await supabase.auth.signInWithPassword({ email, password });
+      if (result.error) {
+        setError(result.error.message);
+      } else if (authMode === "signup" && !result.data.session) {
+        setNotice("Check your inbox to confirm your email, then sign in.");
+      }
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Authentication failed. Please try again.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function createConversation(title: string) {
+    if (!user) throw new Error("Sign in before creating a chat.");
+    const { data, error: insertError } = await supabase
+      .from("conversations")
+      .insert({ user_id: user.id, title })
+      .select("id, title, updated_at")
+      .single();
+    if (insertError) throw new Error(`Could not create a chat: ${insertError.message}`);
+    skipNextLoad.current = data.id;
+    setConversations((current) => [data, ...current]);
+    setActiveId(data.id);
+    setMessages([]);
+    return data;
+  }
+
+  async function startNewChat() {
+    setError("");
+    try {
+      await createConversation("New chat");
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Could not create a chat.");
+    }
+  }
+
+  async function signOut() {
+    try {
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) setError(`Could not sign out: ${signOutError.message}`);
+    } catch (signOutError) {
+      setError(signOutError instanceof Error ? signOutError.message : "Could not sign out.");
+    }
+  }
+
+  async function sendMessage(text: string) {
+    if (busy || !text.trim()) return;
+    setBusy(true);
+    setError("");
+    setDraft("");
+
+    try {
+      let conversationId = activeId;
+      if (!conversationId) {
+        const title = text.trim().replace(/\s+/g, " ").slice(0, 48);
+        const conversation = await createConversation(title || "New chat");
+        conversationId = conversation.id;
+      }
+
+      setMessages((current) => [
+        ...current,
+        { id: crypto.randomUUID(), role: "user", content: text.trim() },
+        { id: crypto.randomUUID(), role: "assistant", content: "" },
+      ]);
+
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId, message: text.trim() }),
+      });
+      if (!response.ok) {
+        const body = await response.json() as { error?: string };
+        throw new Error(body.error || "The chat request failed.");
+      }
+      if (!response.body) throw new Error("The server did not return a response stream.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        setMessages((current) => current.map((item, index) =>
+          index === current.length - 1 && item.role === "assistant"
+            ? { ...item, content: item.content + chunk }
+            : item,
+        ));
+      }
+      const lastChunk = decoder.decode();
+      if (lastChunk) {
+        setMessages((current) => current.map((item, index) =>
+          index === current.length - 1 && item.role === "assistant"
+            ? { ...item, content: item.content + lastChunk }
+            : item,
+        ));
+      }
+      const { data: refreshed } = await supabase
+        .from("conversations")
+        .select("id, title, updated_at")
+        .eq("id", conversationId)
+        .single();
+      if (refreshed) {
+        setConversations((current) => [refreshed, ...current.filter((item) => item.id !== refreshed.id)]);
+      }
+    } catch (sendError) {
+      setMessages((current) => current.filter((item, index) =>
+        !(index === current.length - 1 && item.role === "assistant" && !item.content),
+      ));
+      setError(sendError instanceof Error ? sendError.message : "The chat request failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void sendMessage(draft);
+  }
+
+  if (authLoading) {
+    return <main className="loading-screen"><LoaderCircle className="spinner" size={22} /> Preparing your workspace</main>;
+  }
+
+  if (!user) {
+    return (
+      <main className="auth-screen">
+        <div className="auth-glow auth-glow-one" />
+        <div className="auth-glow auth-glow-two" />
+        <section className="auth-card">
+          <div className="auth-brand"><span className="brand-mark">O</span><span>orbit<span className="brand-dot">.</span></span></div>
+          <p className="eyebrow">YOUR PRIVATE AI WORKSPACE</p>
+          <h1>{authMode === "signin" ? "A little more clarity." : "Make room for ideas."}</h1>
+          <p className="auth-subtitle">Thoughtful conversations, saved securely for the work ahead.</p>
+          {error && <p className="form-message form-error" role="alert">{error}</p>}
+          {notice && <p className="form-message form-notice" role="status">{notice}</p>}
+          <form className="auth-form" onSubmit={handleAuth}>
+            <label htmlFor="email">Email address</label>
+            <input id="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            <label htmlFor="password">Password</label>
+            <input id="password" type="password" autoComplete={authMode === "signin" ? "current-password" : "new-password"} minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required />
+            <button className="primary-button auth-submit" type="submit" disabled={authBusy}>
+              {authBusy ? <LoaderCircle className="spinner" size={17} /> : authMode === "signin" ? "Sign in" : "Create account"}
+              {!authBusy && <ArrowUp size={16} className="button-arrow" />}
+            </button>
+          </form>
+          <p className="auth-switch">
+            {authMode === "signin" ? "New to Orbit?" : "Already have an account?"}{" "}
+            <button type="button" onClick={() => { setAuthMode(authMode === "signin" ? "signup" : "signin"); setError(""); setNotice(""); }}>
+              {authMode === "signin" ? "Create an account" : "Sign in"}
+            </button>
+          </p>
+          <p className="auth-footnote"><Check size={13} /> Your chats are private to your account</p>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="workspace">
+      <aside className="sidebar">
+        <a className="sidebar-brand" href="#"><span className="brand-mark">O</span><span>orbit<span className="brand-dot">.</span></span></a>
+        <button className="new-chat-button" onClick={() => void startNewChat()} disabled={busy}><MessageSquarePlus size={16} /> New conversation <span>⌘ K</span></button>
+        <div className="sidebar-section-label">RECENT</div>
+        <nav className="conversation-list" aria-label="Saved conversations">
+          {conversations.map((conversation) => (
+            <button
+              key={conversation.id}
+              className={`conversation-link${conversation.id === activeId ? " conversation-active" : ""}`}
+              onClick={() => { setError(""); setActiveId(conversation.id); }}
+              disabled={busy}
+              title={conversation.title}
+            >
+              <MessageSquarePlus size={15} />
+              <span>{conversation.title}</span>
+            </button>
+          ))}
+          {conversations.length === 0 && <p className="sidebar-empty">Your conversations will appear here.</p>}
+        </nav>
+        <div className="sidebar-account">
+          <div className="user-avatar">{user.email?.[0]?.toUpperCase() ?? "U"}</div>
+          <div className="account-copy"><strong>{user.email?.split("@")[0] ?? "Your account"}</strong><span>{user.email}</span></div>
+          <button className="icon-button signout-button" aria-label="Sign out" title="Sign out" onClick={() => void signOut()} disabled={busy}><LogOut size={16} /></button>
+        </div>
+      </aside>
+
+      <section className="chat-panel">
+        <header className="topbar">
+          <div className="topbar-context"><span className="status-dot" /> PRIVATE WORKSPACE <span className="topbar-divider">/</span> {activeConversation?.title ?? "New conversation"}</div>
+          <div className="powered-by"><Sparkles size={14} /> AI, with room to think</div>
+        </header>
+
+        <div className="conversation-scroll">
+          <div className={`message-column${messages.length === 0 ? " message-column-empty" : ""}`}>
+            {messages.length === 0 ? (
+              <div className="welcome-block">
+                <div className="welcome-icon"><Sparkles size={20} /></div>
+                <p className="eyebrow">A CLEARER PLACE TO THINK</p>
+                <h1>What’s on your mind?</h1>
+                <p className="welcome-copy">Bring a question, a rough idea, or a blank page. We’ll work through it together.</p>
+                <div className="suggestion-list">
+                  {suggestions.map((suggestion, index) => (
+                    <button key={suggestion} className="suggestion-card" onClick={() => setDraft(suggestion)}>
+                      <span>{suggestion}</span><ArrowUp size={15} className={`suggestion-arrow suggestion-arrow-${index}`} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="message-list">
+                {messages.map((message) => (
+                  <article className={`message-row message-${message.role}`} key={message.id}>
+                    <div className={`message-avatar${message.role === "assistant" ? " assistant-avatar" : ""}`}>
+                      {message.role === "assistant" ? <Bot size={17} /> : (user.email?.[0]?.toUpperCase() ?? "U")}
+                    </div>
+                    <div className="message-body">
+                      <div className="message-author">{message.role === "assistant" ? "Orbit" : "You"}</div>
+                      <p>{message.content || (busy ? <span className="thinking-indicator"><i /><i /><i /></span> : "")}</p>
+                    </div>
+                  </article>
+                ))}
+                <div ref={bottomRef} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="composer-area">
+          {error && <p className="chat-error" role="alert">{error}</p>}
+          <form className="composer" onSubmit={handleSubmit}>
+            <textarea
+              aria-label="Message Orbit"
+              placeholder="Ask anything, or start with a thought..."
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendMessage(draft);
+                }
+              }}
+              rows={2}
+              maxLength={10000}
+              disabled={busy}
+            />
+            <div className="composer-footer">
+              <span><Sparkles size={13} /> Responses stream live · Chats are saved</span>
+              <button className="send-button" type="submit" aria-label="Send message" disabled={busy || !draft.trim()}>
+                {busy ? <LoaderCircle size={17} className="spinner" /> : <Send size={16} />}
+              </button>
+            </div>
+          </form>
+          <p className="composer-disclaimer">Orbit can make mistakes. Check important details.</p>
+        </div>
+      </section>
+    </main>
+  );
+}
+'@
+
+    Write-SlmnFullFile -Path $Path -RelativePath 'src/app/globals.css' -Content @'
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --ink: #f1f3f5;
+  --muted: #8d939d;
+  --line: rgba(255, 255, 255, .085);
+  --panel: #111318;
+  --accent: #a4f0c0;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  background: #0d0f12;
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea { font: inherit; }
+button { color: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+a { color: inherit; text-decoration: none; }
+
+.workspace { display: flex; min-height: 100svh; background: #0e1013; }
+.sidebar {
+  width: 268px; flex: 0 0 268px; display: flex; flex-direction: column;
+  padding: 25px 15px 14px; background: #111317; border-right: 1px solid var(--line);
+}
+.sidebar-brand, .auth-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 650; letter-spacing: -.055em; }
+.brand-mark {
+  width: 28px; height: 28px; display: inline-grid; place-items: center; border-radius: 9px;
+  background: linear-gradient(140deg, #c1f8d4, #71d99d); color: #0c1710; font-size: 16px; font-weight: 800;
+  box-shadow: 0 3px 20px rgba(113, 217, 157, .16);
+}
+.brand-dot { color: #87e9aa; }
+.new-chat-button {
+  display: flex; align-items: center; gap: 9px; margin-top: 39px; padding: 11px 10px;
+  color: #e7e9ec; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025);
+  text-align: left; transition: background .18s, border-color .18s;
+}
+.new-chat-button:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.16); }
+.new-chat-button svg { color: #9ce7b5; }
+.new-chat-button span { margin-left: auto; color: #666c75; font-size: 11px; }
+.sidebar-section-label { margin: 31px 8px 11px; color: #656b75; font-size: 10px; font-weight: 700; letter-spacing: .13em; }
+.conversation-list { display: flex; flex: 1; flex-direction: column; gap: 3px; overflow: auto; }
+.conversation-link {
+  width: 100%; display: flex; align-items: center; gap: 9px; padding: 9px 9px; border: 0;
+  border-radius: 7px; background: transparent; color: #989da6; text-align: left;
+}
+.conversation-link:hover, .conversation-active { color: #e9ebed; background: rgba(255,255,255,.055); }
+.conversation-link svg { flex: 0 0 auto; color: #747b84; }
+.conversation-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-empty { margin: 1px 8px; color: #686e77; font-size: 12px; line-height: 1.6; }
+.sidebar-account { display: flex; align-items: center; gap: 10px; padding: 13px 2px 1px; border-top: 1px solid var(--line); }
+.user-avatar, .message-avatar {
+  width: 31px; height: 31px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 50%;
+  background: #29342d; color: #a9edbf; font-size: 12px; font-weight: 700;
+}
+.account-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.account-copy strong { overflow: hidden; color: #dadddf; font-size: 12px; font-weight: 550; text-overflow: ellipsis; }
+.account-copy span { overflow: hidden; color: #737983; font-size: 10px; text-overflow: ellipsis; }
+.icon-button { display: grid; place-items: center; border: 0; background: transparent; color: #777e87; }
+.icon-button:hover { color: #e5e8eb; }
+
+.chat-panel { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.topbar { height: 59px; display: flex; align-items: center; justify-content: space-between; padding: 0 33px; border-bottom: 1px solid var(--line); }
+.topbar-context { display: flex; align-items: center; gap: 9px; overflow: hidden; color: #9da2a9; font-size: 10px; font-weight: 600; letter-spacing: .075em; text-overflow: ellipsis; white-space: nowrap; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #7ce3a2; box-shadow: 0 0 12px rgba(124,227,162,.6); }
+.topbar-divider { color: #515761; }
+.powered-by { display: flex; align-items: center; gap: 7px; color: #7f858e; font-size: 11px; }
+.powered-by svg { color: #9be6b4; }
+.conversation-scroll { display: flex; min-height: 0; flex: 1; justify-content: center; overflow-y: auto; padding: 0 28px; }
+.message-column { width: min(100%, 760px); padding: 52px 0 28px; }
+.message-column-empty { display: grid; align-content: center; padding-top: 30px; padding-bottom: 30px; }
+.welcome-block { max-width: 570px; margin: 0 auto; }
+.welcome-icon { width: 43px; height: 43px; display: grid; place-items: center; margin-bottom: 27px; border: 1px solid rgba(145,229,173,.2); border-radius: 14px; background: rgba(102,205,135,.08); color: #a2eeba; }
+.eyebrow { margin: 0 0 12px; color: #8bd9a4; font-size: 10px; font-weight: 700; letter-spacing: .16em; }
+.welcome-block h1, .auth-card h1, .setup-card h1 { margin: 0; color: #f1f3f4; font-size: clamp(31px, 4vw, 42px); font-weight: 520; letter-spacing: -.055em; line-height: 1.15; }
+.welcome-copy { max-width: 440px; margin: 13px 0 28px; color: #969ca5; font-size: 14px; line-height: 1.7; }
+.suggestion-list { display: grid; gap: 8px; }
+.suggestion-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.018); color: #c6cacf; text-align: left; transition: background .18s, border-color .18s; }
+.suggestion-card:hover { border-color: rgba(151,229,175,.28); background: rgba(151,229,175,.045); }
+.suggestion-arrow { color: #9097a0; transform: rotate(45deg); }
+.suggestion-arrow-1 { color: #c2a4ef; }
+.suggestion-arrow-2 { color: #a3c8f0; }
+.message-list { display: flex; flex-direction: column; gap: 30px; }
+.message-row { display: flex; align-items: flex-start; gap: 13px; }
+.message-avatar { width: 29px; height: 29px; font-size: 11px; }
+.assistant-avatar { border: 1px solid rgba(150,229,174,.17); background: rgba(115,208,145,.08); color: #a2eeba; }
+.message-body { min-width: 0; flex: 1; padding-top: 2px; }
+.message-author { margin-bottom: 7px; color: #e3e6e8; font-size: 12px; font-weight: 600; }
+.message-body p { margin: 0; color: #c1c5cb; font-size: 14px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.thinking-indicator { display: inline-flex; gap: 4px; padding: 6px 0; }
+.thinking-indicator i { width: 5px; height: 5px; border-radius: 50%; background: #9ce7b5; animation: pulse 1s infinite ease-in-out; }
+.thinking-indicator i:nth-child(2) { animation-delay: .14s; }
+.thinking-indicator i:nth-child(3) { animation-delay: .28s; }
+@keyframes pulse { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+.composer-area { width: min(100% - 48px, 760px); margin: 0 auto; padding: 10px 0 15px; }
+.composer { padding: 11px 12px 9px 16px; border: 1px solid rgba(255,255,255,.13); border-radius: 13px; background: #17191e; box-shadow: 0 10px 40px rgba(0,0,0,.14); transition: border-color .2s; }
+.composer:focus-within { border-color: rgba(147,226,170,.36); }
+.composer textarea { width: 100%; min-height: 46px; resize: vertical; border: 0; outline: 0; background: transparent; color: #e8eaec; font-size: 13px; line-height: 1.6; }
+.composer textarea::placeholder { color: #727882; }
+.composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.composer-footer > span { display: flex; align-items: center; gap: 6px; color: #737a83; font-size: 10px; }
+.composer-footer > span svg { color: #91daa8; }
+.send-button, .primary-button { display: grid; place-items: center; border: 0; border-radius: 8px; background: #a5edbd; color: #142018; transition: background .18s, transform .18s; }
+.send-button { width: 31px; height: 31px; }
+.send-button:hover:not(:disabled), .primary-button:hover:not(:disabled) { background: #bcf4ce; transform: translateY(-1px); }
+.composer-disclaimer { margin: 9px 0 0; color: #626872; font-size: 10px; text-align: center; }
+.chat-error, .form-message { padding: 10px 12px; border: 1px solid rgba(255,126,126,.18); border-radius: 8px; background: rgba(190,72,72,.09); color: #f2a9a9; font-size: 12px; line-height: 1.55; }
+.form-notice { border-color: rgba(145,229,173,.2); background: rgba(102,205,135,.07); color: #a8e7b9; }
+
+.auth-screen, .setup-screen, .loading-screen { position: relative; min-height: 100svh; display: grid; place-items: center; overflow: hidden; background: radial-gradient(ellipse at 50% 0%, #17231c 0, #101216 38%, #0c0e11 78%); }
+.auth-glow { position: absolute; width: 300px; height: 300px; border-radius: 50%; filter: blur(100px); opacity: .13; pointer-events: none; }
+.auth-glow-one { top: 9%; left: 12%; background: #4adb7f; }
+.auth-glow-two { right: 10%; bottom: 4%; background: #619dbd; opacity: .1; }
+.auth-card, .setup-card { position: relative; width: min(100% - 36px, 418px); padding: 33px; border: 1px solid rgba(255,255,255,.09); border-radius: 17px; background: rgba(19,22,26,.82); box-shadow: 0 24px 100px rgba(0,0,0,.38); backdrop-filter: blur(18px); }
+.auth-brand { margin-bottom: 42px; }
+.auth-card .eyebrow { margin-bottom: 11px; }
+.auth-card h1, .setup-card h1 { font-size: 32px; }
+.auth-subtitle { margin: 11px 0 24px; color: #9298a1; font-size: 13px; line-height: 1.65; }
+.auth-form { display: flex; flex-direction: column; }
+.auth-form label { margin: 14px 0 7px; color: #c4c8cd; font-size: 11px; font-weight: 550; }
+.auth-form input { height: 41px; padding: 0 11px; outline: none; border: 1px solid rgba(255,255,255,.11); border-radius: 7px; background: #111317; color: #edf0f2; }
+.auth-form input:focus { border-color: rgba(147,226,170,.47); }
+.primary-button { min-height: 42px; display: flex; gap: 9px; margin-top: 20px; font-size: 12px; font-weight: 650; }
+.button-arrow { transform: rotate(45deg); }
+.auth-switch { margin: 20px 0 0; color: #858b94; font-size: 11px; text-align: center; }
+.auth-switch button { padding: 0; border: 0; background: transparent; color: #a5edbd; font-weight: 600; }
+.auth-footnote { display: flex; align-items: center; justify-content: center; gap: 5px; margin: 24px 0 0; color: #727982; font-size: 10px; }
+.auth-footnote svg { color: #91daa8; }
+.loading-screen { display: flex; gap: 10px; color: #9aa1a9; font-size: 12px; }
+.spinner { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.setup-card { width: min(100% - 36px, 520px); }
+.setup-card .brand-mark { margin-bottom: 24px; }
+.setup-card h1 { margin-bottom: 12px; }
+.setup-card p, .setup-card li { color: #9da3ab; font-size: 13px; line-height: 1.7; }
+.setup-card ol { display: grid; gap: 6px; padding-left: 21px; margin: 20px 0; }
+.setup-card code { color: #b2edc2; font-family: Consolas, monospace; font-size: .92em; }
+.setup-card a { color: #a5edbd; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .sidebar { width: 220px; flex-basis: 220px; padding-inline: 11px; }
+  .topbar { padding-inline: 19px; }
+  .powered-by { display: none; }
+  .conversation-scroll { padding-inline: 18px; }
+  .composer-area { width: calc(100% - 32px); }
+}
+@media (max-width: 560px) {
+  .workspace { flex-direction: column-reverse; }
+  .sidebar { width: 100%; flex: 0 0 auto; padding: 10px 14px; border-top: 1px solid var(--line); border-right: 0; }
+  .sidebar-brand, .sidebar-section-label, .conversation-list { display: none; }
+  .new-chat-button { margin: 0; }
+  .sidebar-account { position: absolute; z-index: 1; right: 12px; bottom: 10px; width: 43%; padding: 0; border: 0; }
+  .account-copy span { display: none; }
+  .chat-panel { min-height: calc(100svh - 52px); }
+  .topbar { height: 50px; padding-inline: 15px; }
+  .topbar-context { max-width: 100%; font-size: 9px; }
+  .conversation-scroll { padding-inline: 17px; }
+  .message-column { padding-top: 30px; }
+  .message-column-empty { padding-top: 10px; }
+  .welcome-block h1 { font-size: 33px; }
+  .composer-area { width: calc(100% - 26px); padding-bottom: 10px; }
+  .new-chat-button span { display: none; }
+  .auth-card { padding: 27px 23px; }
+}
+'@
+
+    Write-SlmnFullFile -Path $Path -RelativePath '.env.example' -Content @'
+# Supabase project URL: Supabase dashboard → Project Settings → API → Project URL
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+
+# Supabase publishable key (safe for browser use; database access is protected by RLS):
+# Supabase dashboard → Project Settings → API Keys → Publishable key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_replace_me
+
+# OpenAI secret key (server-only; never prefix this with NEXT_PUBLIC_):
+# Create at https://platform.openai.com/api-keys
+OPENAI_API_KEY=sk-proj-replace_me
+
+# Optional model ID. Defaults to gpt-4.1-mini.
+OPENAI_MODEL=gpt-4.1-mini
+'@
+
+    $gitignorePath = Join-Path $Path '.gitignore'
+    if (-not (Test-Path -LiteralPath $gitignorePath -PathType Leaf)) {
+        throw "Expected the Next.js scaffold to create .gitignore: $gitignorePath"
+    }
+    $gitignoreContents = [System.IO.File]::ReadAllText($gitignorePath)
+    if ($gitignoreContents -notmatch '(?m)^!\.env\.example\s*$') {
+        [System.IO.File]::AppendAllText(
+            $gitignorePath,
+            [Environment]::NewLine + '!.env.example' + [Environment]::NewLine,
+            [System.Text.UTF8Encoding]::new($false)
+        )
+    }
+
+    Write-SlmnFullFile -Path $Path -RelativePath 'database/schema.sql' -Content @'
+create table if not exists public.conversations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null default 'New chat',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  role text not null check (role in ('user', 'assistant')),
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists conversations_user_updated_idx
+  on public.conversations (user_id, updated_at desc);
+create index if not exists messages_conversation_created_idx
+  on public.messages (conversation_id, created_at);
+
+alter table public.conversations enable row level security;
+alter table public.messages enable row level security;
+
+grant select, insert, update, delete on public.conversations to authenticated;
+grant select, insert on public.messages to authenticated;
+
+drop policy if exists "Users can read their own conversations" on public.conversations;
+create policy "Users can read their own conversations"
+  on public.conversations for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can create their own conversations" on public.conversations;
+create policy "Users can create their own conversations"
+  on public.conversations for insert to authenticated
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can update their own conversations" on public.conversations;
+create policy "Users can update their own conversations"
+  on public.conversations for update to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can delete their own conversations" on public.conversations;
+create policy "Users can delete their own conversations"
+  on public.conversations for delete to authenticated
+  using ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can read messages in their conversations" on public.messages;
+create policy "Users can read messages in their conversations"
+  on public.messages for select to authenticated
+  using (exists (
+    select 1 from public.conversations
+    where conversations.id = messages.conversation_id
+      and conversations.user_id = (select auth.uid())
+  ));
+
+drop policy if exists "Users can add messages to their conversations" on public.messages;
+create policy "Users can add messages to their conversations"
+  on public.messages for insert to authenticated
+  with check (exists (
+    select 1 from public.conversations
+    where conversations.id = messages.conversation_id
+      and conversations.user_id = (select auth.uid())
+  ));
+
+create or replace function public.touch_conversation_after_message()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.conversations
+  set updated_at = now()
+  where id = new.conversation_id;
+  return new;
+end;
+$$;
+
+drop trigger if exists touch_conversation_after_message on public.messages;
+create trigger touch_conversation_after_message
+  after insert on public.messages
+  for each row execute function public.touch_conversation_after_message();
+'@
+
+    $readme = @'
+# __PROJECT_NAME__ — SLMN Full
+
+A polished, single-project full-stack starter: Next.js App Router, TypeScript, Tailwind CSS v4, Supabase Auth + Postgres, and a streaming OpenAI chat. The Orbit chat is a working, removable product demo—not a separate service.
+
+## Getting started
+
+### 1. Create the Supabase project and database
+
+1. Create a project at [supabase.com/dashboard](https://supabase.com/dashboard).
+2. Open **SQL Editor**, paste the contents of [`database/schema.sql`](./database/schema.sql), and run it. This creates the chat tables, indexes, ownership policies, and timestamp trigger.
+3. Under **Authentication → Providers → Email**, enable email/password sign-in. For quick local testing, you can turn off email confirmation; otherwise, new users must confirm the link delivered to their email.
+4. Under **Project Settings → API**, copy the **Project URL** and **Publishable key**. The app uses a publishable key and RLS; never put a service-role key in the browser.
+
+### 2. Add environment variables
+
+Copy `.env.example` to `.env.local` and fill in:
+
+- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from Supabase **Project Settings → API**.
+- `OPENAI_API_KEY` from [platform.openai.com/api-keys](https://platform.openai.com/api-keys). This is a server-only secret.
+- `OPENAI_MODEL` is optional; it defaults to `gpt-4.1-mini`.
+
+Restart the development server after changing environment values.
+
+### 3. Run the app
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000), create an account, and start chatting. Production checks:
+
+```bash
+npm run lint
+npm run build
+```
+
+## What is included
+
+- `src/app/` — App Router shell, setup screen, and authenticated chat API route.
+- `src/components/chat-workspace.tsx` — self-contained demo UI for email auth, saved chats, and streaming chat.
+- `src/lib/supabase/` — browser and cookie-aware server clients.
+- `database/schema.sql` — conversations/messages schema, indexes, RLS policies, and chat ordering trigger.
+- `.env.example` — documented public and server-only configuration.
+- `AGENTS.md` — architecture, product intent, safety constraints, and validation expectations for coding agents.
+
+## Security and production notes
+
+- The OpenAI key is only read by the server route; it is never sent to the browser.
+- Supabase RLS restricts conversations and messages to their owner. Keep RLS enabled and do not ship a service-role key to client code.
+- The API validates the signed-in user and conversation ownership, bounds each message, and sends only the latest 20 messages as model context.
+- Add rate limiting, observability, and your own data-retention policy before exposing this demo publicly. Configure your production Supabase Auth redirect/site URLs before deployment.
+
+## Removing the demo
+
+The Orbit sample is intentionally easy to replace. Swap `src/components/chat-workspace.tsx` and the content in `src/app/page.tsx` for your product UI. Keep `src/app/api/chat/route.ts` and `src/lib/supabase/` only if you want the supplied AI and Supabase integrations; remove `database/schema.sql` if you do not need saved chats. Then remove unused packages from `package.json`.
+'@
+    Write-SlmnFullFile -Path $Path -RelativePath 'README.md' -Content ($readme.Replace('__PROJECT_NAME__', $Name))
+
+    $agents = @'
+# AGENTS.md
+
+## Project intent
+
+This project is a production-minded starting point for a small full-stack product. The included Orbit experience demonstrates email authentication, private database-backed conversations, and a streamed AI response. Replace the demo with the product being built; do not let the sample define product scope.
+
+## How to work here
+
+1. Read this file before changing code.
+2. Inspect the current implementation and configuration before choosing a pattern.
+3. Keep changes focused and preserve the server/client boundaries below.
+4. Run `npm run lint` and `npm run build` for meaningful changes; manually test auth, chat persistence, and streaming when those flows change.
+5. Report what changed, how it was verified, and any required external setup.
+
+## Architecture and boundaries
+
+- Next.js App Router with TypeScript. Prefer Server Components; add `"use client"` only for interactive/browser-dependent UI.
+- Tailwind CSS v4 is configured through `src/app/globals.css`.
+- Supabase Auth and Postgres are accessed through `@supabase/ssr` clients. Use the browser client for user-scoped interactive data and the cookie-aware server client in route handlers.
+- `database/schema.sql` is the source of truth for saved conversation data and its Row Level Security policies. Do not bypass RLS or use a service-role key for ordinary requests.
+- `/api/chat` validates the session and chat ownership, reads bounded history from Supabase, and streams model output from the server.
+- `OPENAI_API_KEY` is secret and server-only. Only `NEXT_PUBLIC_*` values may be considered browser-visible; never place credentials in client components, logs, or committed files.
+- Email/password is the demo auth flow. Storage is intentionally not configured because the demo does not use it.
+
+## Product and data model
+
+- A user can sign up, sign in, start a conversation, revisit saved conversations, and stream an assistant response.
+- `conversations.user_id` identifies the owner. `messages` belong to one conversation and contain only `user` or `assistant` text.
+- Every database read/write must remain scoped by Supabase Auth and the matching RLS rules.
+- The Orbit sample is removable. Keep product-specific code out of shared starter setup; replace `src/components/chat-workspace.tsx` and `src/app/page.tsx` when beginning a real product.
+
+## Technology choices
+
+- Next.js App Router, React, TypeScript
+- Tailwind CSS v4
+- Supabase Auth, Postgres, and `@supabase/ssr`
+- Vercel AI SDK (`ai`, `@ai-sdk/openai`) with a configurable OpenAI model
+- `lucide-react` for demo icons
+
+## Checks
+
+- `npm run lint`
+- `npm run build`
+- Manual: create/sign in to an account; create a chat; send a prompt and confirm it streams; reload and confirm the conversation persists; verify a second account cannot read the first account's data.
+
+## Non-goals and constraints
+
+- No separate Express server, extra provider variants, or unused storage integration.
+- Do not accept conversation history from the browser as trusted model context; load it from the database after verifying ownership.
+- Do not add privileged database credentials to the frontend.
+- Before public production use, add rate limiting, provider-cost controls, monitoring, and an explicit retention policy.
+'@
+    Write-SlmnFullFile -Path $Path -RelativePath 'AGENTS.md' -Content $agents
+
+    foreach ($asset in @('public/next.svg', 'public/vercel.svg', 'public/file.svg', 'public/globe.svg', 'src/app/favicon.ico')) {
+        $assetPath = Join-Path $Path $asset
+        if (Test-Path -LiteralPath $assetPath -PathType Leaf) {
+            Remove-Item -LiteralPath $assetPath -Force
+        }
+    }
+}
+
+function slmn-full {
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
+
+    $projectName = ($name.Trim().ToLowerInvariant() -replace '[^a-z0-9._-]+', '-').Trim([char[]]'.-_')
+    if ([string]::IsNullOrWhiteSpace($projectName)) {
+        throw 'Project name must contain at least one letter or number.'
+    }
+
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $projectName
+    if (Test-Path -LiteralPath $path) {
+        throw "Project already exists: $path"
+    }
+
+    Set-Location $projectsRoot
+    if ($projectName -ne $name) {
+        Write-Host "Using project folder name: $projectName" -ForegroundColor DarkGray
+    }
+    Write-SlmnStatus "Scaffolding the Next.js full-stack project '$projectName'..."
+    & npx --yes create-next-app@latest $projectName --typescript --tailwind --eslint --app --src-dir --use-npm --import-alias '@/*' --yes
+    if ($LASTEXITCODE -ne 0) {
+        throw "Next.js setup failed for '$projectName'."
+    }
+
+    if (-not (Test-Path -LiteralPath (Join-Path $path 'src/app/layout.tsx')) -or
+        -not (Test-Path -LiteralPath (Join-Path $path 'package.json'))) {
+        throw "Next.js did not create the expected TypeScript project: $path"
+    }
+
+    Push-Location $path
+    try {
+        Invoke-Npm install ai @ai-sdk/openai @supabase/ssr @supabase/supabase-js lucide-react
+        Write-SlmnFullProject -Path $path -Name $projectName
+    } finally {
+        Pop-Location
+    }
+
+    Write-Host ''
+    Write-Host '  Next steps:' -ForegroundColor Green
+    Write-Host '  1. Copy .env.example to .env.local and add your Supabase URL + publishable key.' -ForegroundColor White
+    Write-Host '     Get them from Supabase Dashboard > Project Settings > API.' -ForegroundColor DarkGray
+    Write-Host '  2. Run database/schema.sql in your Supabase project SQL Editor.' -ForegroundColor White
+    Write-Host '  3. Add OPENAI_API_KEY from https://platform.openai.com/api-keys to .env.local.' -ForegroundColor White
+    Write-Host '  4. Start the app with: npm run dev' -ForegroundColor White
+    Write-Host '  See README.md for the full setup, email confirmation, and production notes.' -ForegroundColor DarkGray
+    Write-Host ''
+
+    Set-Location $path
+    Open-ProjectEditor -Path $path -SkipAgentInstructions
+    Start-SlmnDevServer -Path $path
+}
+
+# -----------------------------
 # 11. STARTER MENU
 # -----------------------------
 function slmn-starter {
@@ -3600,6 +4900,12 @@ function slmn-starter {
         if ([string]::IsNullOrWhiteSpace($command)) {
             Write-Host 'Starter selection cancelled.' -ForegroundColor DarkGray
             return
+        }
+
+        if ($command -eq '__settings__') {
+            Show-SlmnSettings
+            $initialCommand = $null
+            continue
         }
 
         Clear-Host
@@ -3645,6 +4951,8 @@ function next-app {
 
     Complete-InteractiveProject -Path $path -Name $name -Stack Next
 }
+
+# <<< SLMN PROFILE SCRIPT END <<<
 
 function next-ts-app {
     param(

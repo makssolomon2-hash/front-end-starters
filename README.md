@@ -22,14 +22,21 @@ PowerShell commands for creating clean frontend projects in your configured proj
 
 ## Easiest Way to Install
 
-No need to paste the script into Notepad or edit `$PROFILE` by hand. If you already downloaded or cloned the repository, open PowerShell in its folder and run:
+Open PowerShell and run:
 
 ```powershell
-. .\starters.ps1
-slmn-install
+notepad $PROFILE
 ```
 
-To install directly from GitHub without keeping a checkout, paste this once into PowerShell:
+Paste the complete contents of `starters.ps1` into the profile file and save it. Leave the script in `$PROFILE`; PowerShell loads it automatically in new terminals. Restart Windows Terminal, then run:
+
+```powershell
+slmn-starter
+```
+
+To update the script in your profile later, run `slmn-update`. The SLMN begin/end markers in the script let the updater replace its own block while preserving profile content before or after it.
+
+If your current `slmn-update` is too old to update itself, bootstrap the updater once with this PowerShell block. It downloads the current script, loads its new command, then updates the script already in your profile:
 
 ```powershell
 $bootstrapDirectory = Join-Path $env:TEMP ("slmn-bootstrap-" + [guid]::NewGuid().ToString('N'))
@@ -40,10 +47,11 @@ if ($PSVersionTable.PSVersion.Major -le 5) {
 }
 try {
   New-Item -ItemType Directory -Path $bootstrapDirectory -Force | Out-Null
-  Invoke-WebRequest -Uri "https://raw.githubusercontent.com/makssolomon2-hash/front-end-starters/main/starters.ps1" -OutFile (Join-Path $bootstrapDirectory "starters.ps1") -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+  $scriptPath = Join-Path $bootstrapDirectory "starters.ps1"
+  Invoke-WebRequest -Uri "https://raw.githubusercontent.com/makssolomon2-hash/front-end-starters/main/starters.ps1" -OutFile $scriptPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/makssolomon2-hash/front-end-starters/main/slmn-hotkeys.ahk" -OutFile (Join-Path $bootstrapDirectory "slmn-hotkeys.ahk") -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
-  . (Join-Path $bootstrapDirectory "starters.ps1")
-  slmn-install
+  . $scriptPath
+  slmn-update -SourcePath $scriptPath
 } finally {
   if ($null -ne $originalSecurityProtocol) {
     [Net.ServicePointManager]::SecurityProtocol = $originalSecurityProtocol
@@ -54,15 +62,7 @@ try {
 }
 ```
 
-The installer keeps the script in `~\.slmn\starters.ps1` and adds a loader line to your PowerShell profile. It preserves existing profile content. If you previously pasted the whole script into your profile, this setup adds the managed loader after it; the managed version then takes precedence in new terminals.
-
-Restart Windows Terminal, then run:
-
-```powershell
-slmn-starter
-```
-
-Choose a starter from the menu.
+After the update, restart the terminal to load the refreshed profile.
 
 ## Quick Start
 
@@ -73,7 +73,7 @@ Open PowerShell in the folder containing `starters.ps1`, then run:
 slmn-starter
 ```
 
-`slmn-starter` opens the colorized menu. Use the Up and Down arrow keys and Enter, or type the displayed shortcut, then enter a project name. Press Esc in the menu to cancel; at the project-name prompt, press Escape or Left Arrow to return to the menu with your last choice selected.
+`slmn-starter` opens the colorized menu. Each row shows the starter name first, followed by colored technology badges and its shortcut. Use Up/Down and Enter, or type the displayed shortcut. Choose **Settings** (shortcut `S`) to change the default project folder, VS Code opening, and automatic preview/browser launch. Press Esc in the menu to cancel; at the project-name prompt, press Escape or Left Arrow to return to the menu with your last choice selected.
 
 ## What Is Included
 
@@ -147,9 +147,9 @@ The last command must return `True`. Then load the functions into the current Po
 
 The leading `.` is important: it dot-sources the script, making the starter commands available in the current terminal. See **Installation Recovery** when Windows blocks a downloaded script or your shell blocks local scripts.
 
-### Managed Install: `~\.slmn`
+### Optional Managed-Loader Install: `~\.slmn`
 
-`slmn-install` copies the script to `~\.slmn\starters.ps1`, creates `~\.slmn\config.json`, and connects it to the **Current User, All Hosts** PowerShell profile with this loader:
+If you prefer keeping the script in `~\.slmn\starters.ps1` and using only a loader in your profile, run `slmn-install`. It creates `~\.slmn\config.json` and adds this loader when your profile does not already contain a recognized SLMN script block:
 
 ```powershell
 . "$env:USERPROFILE\.slmn\starters.ps1"
@@ -161,7 +161,7 @@ To update, open a new PowerShell terminal and run:
 slmn-update
 ```
 
-`slmn-update` downloads the latest `starters.ps1` and `slmn-hotkeys.ahk` from the official GitHub `main` branch, validates the PowerShell syntax before installing, and ensures the profile loads the managed copy. Restart the terminal after the update to load the new functions. To update from a local checkout instead, run `slmn-update -SourcePath .\starters.ps1` from that folder. Existing projects are not changed by tool updates. To remove the profile loader while keeping `~\.slmn` and its configuration, run `slmn-uninstall`.
+`slmn-update` downloads the latest script and hotkey file from GitHub, validates the PowerShell syntax, and updates either the marked full script in `$PROFILE` or the managed copy, depending on your installation. To update from a local checkout, run `slmn-update -SourcePath .\starters.ps1` from that folder. Existing projects are not changed. `slmn-uninstall` removes the managed profile loader; it does not remove a full script copied into `$PROFILE`.
 
 ### Installation Recovery
 
@@ -191,11 +191,13 @@ View the active configuration:
 slmn-config
 ```
 
-Set the permanent projects directory, or restore Desktop:
+Choose **Settings** from `slmn-starter` to edit the destination and toggle the VS Code and automatic preview/browser options interactively. The command-line equivalents are:
 
 ```powershell
 slmn-config path "D:\Projects"
 slmn-config path desktop
+slmn-config openInVSCode false
+slmn-config autoStartDev false
 ```
 
 Every starter also accepts `-Path` as a one-time override. It creates the destination directory when it does not already exist:
