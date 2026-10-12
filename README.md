@@ -47,27 +47,33 @@ Open PowerShell in the folder containing `starters.ps1`, then run:
 slmn-starter
 ```
 
-`slmn-starter` opens the menu. Use the Up and Down arrow keys and Enter, or type the displayed number/letter shortcut, then enter a project name.
+`slmn-starter` opens the colorized menu. Use the Up and Down arrow keys and Enter, or type the displayed shortcut, then enter a project name. Press Esc to cancel.
 
 ## What Is Included
 
 | Command | Stack | Initial project |
 | --- | --- | --- |
 | `slmn-app "my-app"` | Vite, React JavaScript, Tailwind CSS v4, GSAP, Three.js, React Icons | **Flagship:** creates a removable SLMN technology demo with no setup prompts |
-| `slmn-starter` | Starter menu | Choose a starter with arrows/Enter or a displayed number/letter shortcut |
+| `slmn-starter` | Starter menu | Choose a starter with arrows/Enter or a displayed shortcut |
 | `vanilla-project "my-site"` | HTML, CSS, JavaScript | Full-screen native HTML/CSS/JS screen with a pointer-reactive visual |
 | `tailwind-project "my-site"` | Vite, Tailwind CSS v4 | Full-screen Vite screen with Tailwind ready for application code |
 | `gsap-project "my-site"` | HTML, CSS, JavaScript, GSAP CDN | Full-screen screen with a GSAP reveal and pointer-reactive visual |
 | `tailwind-gsap-project "my-site"` | Vite, Tailwind CSS v4, GSAP | Full-screen Tailwind screen with GSAP reveal motion |
 | `react-project "my-site"` | Vite, React | Removable React screen with linked stack cards and `StarterVisual` |
+| `react-ts-project "my-site"` | Vite, React, TypeScript | Type-safe React screen with a clean TSX entry and TSX demo components |
 | `react-tailwind-project "my-site"` | Vite, React, Tailwind CSS v4 | React screen with Tailwind and a removable pointer-reactive visual |
+| `react-tailwind-ts-project "my-site"` | Vite, React, TypeScript, Tailwind CSS v4 | Type-safe React + Tailwind screen with TSX demo components |
 | `react-tailwind-gsap-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP | React screen with GSAP reveal motion and stack-specific links |
+| `react-tailwind-gsap-ts-project "my-site"` | Vite, React, TypeScript, Tailwind CSS v4, GSAP | Type-safe React + Tailwind + GSAP screen |
 | `react-tailwind-gsap-three-project "my-site"` | Vite, React, Tailwind CSS v4, GSAP, Three.js, React Icons | Full removable React technology demo with the interactive Three.js model |
+| `react-tailwind-gsap-three-ts-project "my-site"` | Vite, React, TypeScript, Tailwind CSS v4, GSAP, Three.js, React Icons | TypeScript version of the full removable technology demo |
+| `slmn-ts-app "my-app"` | Vite, React TypeScript, Tailwind CSS v4, GSAP, Three.js, React Icons | TypeScript flagship demo; project name is normalized for npm |
 | `vite-app "my-app"` | Vite | Official Vite prompts, optional libraries, then a matching screen for React and vanilla templates |
 | `full-app "my-demo"` | Alias for `slmn-app` | Backwards-compatible name for the flagship starter |
 | `next-app "my-next-app"` | Next.js | Official Create Next App prompts, optional GSAP/Three.js, then a matching App Router screen |
+| `next-ts-app "my-next-app"` | Next.js, TypeScript | Create Next App with TypeScript explicitly selected, then optional libraries and a matching App Router screen |
 
-Vite-generated projects are cleaned before VS Code opens. They do not keep the default counter, starter icons, `public` folder, `src/assets`, generated README, or the default React lint setup.
+Vite-generated projects are cleaned before VS Code opens. They do not keep the default counter, starter icons, `public` folder, `src/assets`, generated README, or the default React lint setup. TypeScript Vite starters retain Vite's `tsconfig.json` files and use typed TSX demo components.
 
 ## Requirements
 
@@ -200,7 +206,7 @@ react-project "portfolio" -Path "D:\Clients"
 slmn-starter -Path "D:\Scratch"
 ```
 
-Set `openInVSCode` or `autoStartDev` to `false` in the config file when you prefer to open projects or start development servers manually.
+Set `openInVSCode` or `autoStartDev` to `false` in the config file when you prefer to open projects, start previews, or run development servers manually. When enabled, starters open VS Code first, then wait for the local preview and open it in your default browser.
 
 ## Global Hotkeys
 
@@ -233,7 +239,7 @@ slmn-install-hotkeys
 
 | Shortcut | What happens |
 | --- | --- |
-| `Ctrl + Alt + S` | Opens a new PowerShell window with the interactive `slmn-starter` menu. Use arrow keys and Enter, or type one of the menu shortcuts: `1`/`v`, `2`/`t`, `3`/`g`, `4`/`tg`, `5`/`r`, `6`/`rt`, `7`/`rtg`, `8`/`a`, `9`/`vite`, or `0`/`next`. Then enter the project name. |
+| `Ctrl + Alt + S` | Opens a new PowerShell window with the interactive `slmn-starter` menu. Use arrow keys and Enter, or type one of the displayed shortcuts, including `RTS`, `RTTS`, `RTGTS`, `3DTS`, `ATS`, and `NTS`. Then enter the project name. |
 | `Ctrl + Alt + A` | Opens a new PowerShell window, asks for a project name, then runs the flagship `slmn-app` starter. |
 
 Both shortcuts create projects in the configured `projectsPath`, not the terminal's current folder. Set that destination with `slmn-config path "D:\Projects"` or use `slmn-config path desktop` to restore the Desktop default.
@@ -312,27 +318,33 @@ tailwind-project "tailwind-demo"
 gsap-project "gsap-hero"
 tailwind-gsap-project "animated-site"
 react-project "portfolio"
+react-ts-project "typed-portfolio"
 react-tailwind-project "tailwind-app"
+react-tailwind-ts-project "typed-tailwind-app"
 react-tailwind-gsap-project "motion-app"
+react-tailwind-gsap-ts-project "typed-motion-app"
 react-tailwind-gsap-three-project "three-app"
+react-tailwind-gsap-three-ts-project "typed-three-app"
 slmn-app "my-app"
+slmn-ts-app "my-ts-app"
 vite-app "my-app"
 next-app "my-next-app"
+next-ts-app "my-next-ts-app"
 ```
 
-`slmn-starter` shows the primary starters in one menu. Use the Up and Down arrow keys and Enter, or type a shortcut: `1`/`v`, `2`/`t`, `3`/`g`, `4`/`tg`, `5`/`r`, `6`/`rt`, `7`/`rtg`, `8`/`a`, `9`/`vite`, or `0`/`next`. Choosing `SLMN App` creates its React JavaScript project without further setup questions. Its project name is converted to a lowercase npm-safe folder name, so `APPP` becomes `appp`. Choosing Vite opens its normal framework and variant selector next.
+`slmn-starter` presents grouped JavaScript and TypeScript options in an animated terminal menu with colored tool badges: JavaScript yellow, TypeScript cyan/blue, React blue, Next.js white, Tailwind cyan, and GSAP green. A rotating spinner appears while the preview becomes ready. Use the Up and Down arrow keys and Enter, or type the displayed shortcut; Esc cancels. Choosing `SLMN App` or its TypeScript counterpart creates the full project without further setup questions. Their project names are converted to lowercase npm-safe folder names, so `APPP` becomes `appp`. Choosing Vite opens its normal framework and variant selector next.
 
-Projects are created at the configured `projectsPath` (Desktop by default), or at a command's temporary `-Path` override. Vite-based starters scaffold, install npm packages, replace their default files, and then open the finished project in VS Code. `autoStartDev` controls whether the generated project starts `npm run dev` automatically.
+Projects are created at the configured `projectsPath` (Desktop by default), or at a command's temporary `-Path` override. Starters open the finished project in VS Code, start their preview, wait for localhost to respond, and then open the app in your default browser. Framework dev servers keep running in the PowerShell session; `autoStartDev` controls both automatic server startup and browser preview.
 
-The Vanilla starter can be opened directly in a browser or served with your preferred local server. The GSAP starter loads GSAP from a CDN, so its first animation requires an internet connection.
+Vanilla HTML and GSAP starters are served from a temporary localhost server using Node's built-in HTTP module; this adds no packages or files to the generated project. If Node.js is unavailable, the static page opens directly from disk. The GSAP starter loads GSAP from a CDN, so its first animation requires an internet connection.
 
-`vite-app` and `next-app` use the configured projects folder and start Vite's or Next.js's normal interactive command. Once the official CLI finishes, `vite-app` asks whether to add Tailwind CSS, GSAP, and Three.js; it configures Tailwind when selected. Create Next App already asks about Tailwind during its own setup, so `next-app` only asks whether to add GSAP and Three.js afterward. Each command installs only the features you select, opens the finished project in VS Code, and starts `npm run dev` unless `autoStartDev` is disabled. Git behavior follows the official CLI you choose.
+`vite-app`, `next-app`, and `next-ts-app` use the configured projects folder and start Vite's or Next.js's normal interactive command. `next-ts-app` explicitly selects the official TypeScript option. Once the official CLI finishes, `vite-app` asks whether to add Tailwind CSS, GSAP, and Three.js; it configures Tailwind when selected. Create Next App already asks about Tailwind during its own setup, so the Next commands only ask whether to add GSAP and Three.js afterward. Each command installs only the features you select, opens the finished project in VS Code, waits until the server responds, and opens the preview in a browser unless `autoStartDev` is disabled. Git behavior follows the official CLI you choose.
 
 Feature questions use uppercase `[Y/N]` prompts. Press `Y` or `N` once; no Enter key is needed.
 
-For `vite-app`, choose the framework and variant in Vite's normal prompts. The launcher uses Vite's `--no-immediate` option, then installs your selected features and starts the server after setup. For `next-app`, answer Create Next App's normal prompts; its package installation completes before the two feature questions appear.
+For `vite-app`, choose the framework and variant in Vite's normal prompts. The launcher uses Vite's `--no-immediate` option, then installs your selected features and starts the server after setup. For `next-app` and `next-ts-app`, answer Create Next App's normal prompts; its package installation completes before the two feature questions appear.
 
-`slmn-app` is the primary starter. It converts the entered project name to a lowercase npm-safe folder name, then creates a React JavaScript Vite project without framework, variant, package-name, or Create Vite installation questions. It automatically installs Tailwind CSS, GSAP, Three.js, and React Icons, then replaces Vite's default React page with a dark full-screen SLMN demo: linked technology cards on the left and a mouse-controlled WebGL model on the right. It then opens VS Code and starts the development server when `autoStartDev` is enabled. `full-app` remains available as an alias.
+`slmn-app` is the JavaScript flagship and `slmn-ts-app` is its TypeScript counterpart. Both convert the entered project name to a lowercase npm-safe folder name, create the corresponding official Vite React template without framework, variant, package-name, or Create Vite installation questions, and install Tailwind CSS, GSAP, Three.js, and React Icons. The TypeScript version also installs `@types/three`. Each replaces Vite's default React page with a dark full-screen SLMN demo: linked technology cards on the left and a mouse-controlled WebGL model on the right. They then open VS Code, wait for the development server, and open the ready app in a browser when `autoStartDev` is enabled. `full-app` remains an alias for `slmn-app`.
 
 ## Share With Others
 

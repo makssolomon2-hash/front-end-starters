@@ -13,9 +13,15 @@
 #   gsap-project "gsap-hero"
 #   tailwind-gsap-project "animated"
 #   react-project "portfolio"
+#   react-ts-project "portfolio"
 #   react-tailwind-gsap-project "motion-app"
+#   react-tailwind-ts-project "typed-tailwind"
+#   react-tailwind-gsap-ts-project "typed-motion"
+#   react-tailwind-gsap-three-ts-project "typed-3d"
+#   slmn-ts-app "typed-app"
 #   vite-app "my-app"
 #   next-app "my-next-app"
+#   next-ts-app "my-next-ts-app"
 # ============================================
 
 $script:SlmnSourcePath = $PSCommandPath
@@ -803,7 +809,7 @@ if (visual) {
 function Invoke-Npm {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
 
-    Write-Host "Running: npm $($Arguments -join ' ')" -ForegroundColor Cyan
+    Write-SlmnStatus "Running npm $($Arguments -join ' ')"
     & npm @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "npm $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
@@ -813,38 +819,438 @@ function Invoke-Npm {
 function Invoke-NpmDevInstall {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Packages)
 
-    Write-Host "Installing development packages: $($Packages -join ', ')" -ForegroundColor Cyan
+    Write-SlmnStatus "Installing development packages: $($Packages -join ', ')"
     & npm install --save-dev @Packages
     if ($LASTEXITCODE -ne 0) {
         throw "npm install --save-dev $($Packages -join ' ') failed with exit code $LASTEXITCODE."
     }
 }
 
+function Write-ProjectAgentInstructions {
+    param([string]$Path)
+
+    $instructions = @'
+# AGENTS.md
+
+> **Starter Blueprint**\
+> Fill the questions below.\
+> Once answered, this file becomes the single source of truth for every AI coding agent (and for you).\
+> Aim for the density and clarity of a production-grade agents.md (see the Vertex-style example for the finished quality bar).
+
+---
+
+## 0. Agent Role (keep or rewrite)
+
+You are a **principal-level frontend / full-stack engineer and AI implementation agent**.\
+Your job is to understand the request, respect the boundaries defined in this file, write a clear implementation plan when asked, get approval if required, then implement cleanly.
+
+---
+
+## 1. Project Intent (answer these first – 5–10 minutes)
+
+**One-sentence product description**\
+What are we building?
+
+**Primary user & job-to-be-done**\
+Who is it for and what is the main thing they come here to accomplish?
+
+**Core experience / screens for v1**\
+List the 3–7 most important pages or flows that must exist in the first version.
+
+**What makes this product special?**\
+The one or two things that differentiate it (search, animation, 3D, real-time, etc.).
+
+**Explicit non-goals for v1**\
+What are we deliberately *not* building right now?
+
+**Definition of done for the first vertical slice**\
+What does “good enough to show / ship” look like?
+
+---
+
+## 2. How the agent should work
+
+Describe the preferred loop (or keep the default below and adjust):
+
+1. Read this file completely.
+2. Inspect existing code and config before assuming anything.
+3. Ask at most one focused clarifying question if genuinely ambiguous.
+4. (Optional) Write a short implementation prompt before coding large features.
+5. Implement strictly within the boundaries defined here.
+6. Run the checks listed in section 7.
+7. Report briefly: What I did / How to test / Needs attention.
+
+---
+
+## 3. Architecture & Boundaries (critical)
+
+**High-level structure**\
+(e.g. single Vite app, Next.js App Router, monorepo with web + studio, etc.)
+
+**Server vs Client rules**\
+What must stay on the server? What is allowed in the browser?
+
+**Data access rules**\
+Who can read what? Who can write what? Any tokens that must never reach the client?
+
+**Third-party services & their boundaries**\
+(Auth, CMS, analytics, AI, video, etc. — name them and state the hard rules)
+
+---
+
+## 4. Tech Stack (exact versions if known)
+
+List every important package and any non-negotiable choices:
+
+- Framework / bundler:
+- Styling:
+- Animation / 3D:
+- State / data fetching:
+- Auth:
+- CMS / content:
+- Analytics:
+- AI / search:
+- Other:
+
+---
+
+## 5. Key Decisions already made
+
+Write the important product and technical decisions that the agent must not re-litigate.\
+Examples: “Search returns structured cards, never a chatbox”, “All video playback stays on-site via embed”, “Progress is written only through a server route”, etc.
+
+---
+
+## 6. Data / Content Model (if applicable)
+
+Describe the main entities and their relationships at a high level.\
+What is stored where? What is derived vs stored?
+
+---
+
+## 7. Checks the agent must run
+
+- Type-check
+- Lint
+- Production build (when relevant)
+- Manual test steps for the feature just built
+
+---
+
+## 8. Things that will trip you up / Hard constraints
+
+List the gotchas, security rules, and non-obvious constraints that are easy to violate.
+
+---
+
+## 9. When in doubt
+
+Keep it small.\
+Respect the server/client boundaries.\
+Do not invent features outside the Project Intent.\
+Prefer existing patterns and components in the codebase.\
+Ask before expanding scope.
+
+---
+
+**After you finish answering the questions above, delete this instruction block and any unused sections.**\
+The resulting file should feel dense, decisive, and production-ready.
+'@
+
+    Set-Content -LiteralPath (Join-Path $Path 'AGENTS.md') -Value $instructions -Encoding utf8
+}
+
 function Open-ProjectEditor {
     param([string]$Path)
 
-    Write-Host "Project created: $Path" -ForegroundColor Green
+    Write-SlmnSuccess "Project created: $Path"
+    Write-ProjectAgentInstructions -Path $Path
+
     if (-not (Get-SlmnConfiguration).openInVSCode) {
         Write-Host 'VS Code opening is disabled in SLMN configuration.' -ForegroundColor DarkGray
         return
     }
 
     if (Get-Command code -ErrorAction SilentlyContinue) {
+        Write-SlmnStatus 'Opening the project in VS Code...'
         & code $Path
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "VS Code could not open: $Path"
+        } else {
+            Start-Sleep -Milliseconds 400
+            Write-SlmnStatus 'Focusing AGENTS.md...'
+            & code --reuse-window (Join-Path $Path 'AGENTS.md')
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "VS Code could not open AGENTS.md in: $Path"
+            }
         }
     } else {
         Write-Warning "VS Code CLI ('code') was not found. Open manually: $Path"
     }
 }
 
-function Start-SlmnDevServer {
-    if ((Get-SlmnConfiguration).autoStartDev) {
-        Invoke-Npm run dev
-    } else {
-        Write-Host 'Automatic dev-server start is disabled in SLMN configuration.' -ForegroundColor DarkGray
+function Test-SlmnUrlReady {
+    param([Parameter(Mandatory)][string]$Url)
+
+    $request = [System.Net.HttpWebRequest]::Create($Url)
+    $request.Method = 'GET'
+    $request.Timeout = 1200
+    $request.ReadWriteTimeout = 1200
+    $request.Proxy = $null
+
+    try {
+        $response = $request.GetResponse()
+        $response.Close()
+        return $true
+    } catch [System.Net.WebException] {
+        if ($_.Exception.Response) {
+            $_.Exception.Response.Close()
+            return $true
+        }
+        return $false
     }
+}
+
+function Get-SlmnAvailablePort {
+    $portProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    try {
+        $portProbe.Start()
+        return $portProbe.LocalEndpoint.Port
+    } finally {
+        $portProbe.Stop()
+    }
+}
+
+function Wait-SlmnForPreview {
+    param(
+        [Parameter(Mandatory)]$Job,
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$Description,
+        [int]$TimeoutSeconds = 120
+    )
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $spinner = @('|', '/', '-', '\')
+    $frameIndex = 0
+    $lastOutput = ''
+
+    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        if (Test-SlmnUrlReady -Url $Url) {
+            Write-Host ("`r" + (' ' * 90) + "`r") -NoNewline
+            return $Url
+        }
+
+        if ($Job.State -in @('Completed', 'Failed', 'Stopped')) {
+            break
+        }
+
+        $frame = $spinner[$frameIndex % $spinner.Count]
+        Write-Host "`r  $frame  $Description" -NoNewline -ForegroundColor Cyan
+        $frameIndex++
+        Start-Sleep -Milliseconds 180
+    }
+
+    Write-Host ("`r" + (' ' * 90) + "`r") -NoNewline
+    $lastOutput = Receive-Job -Job $Job -Keep -ErrorAction SilentlyContinue 2>&1 | Out-String
+    $failureDetails = ($lastOutput -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Last 12) -join "`n"
+    if ($Job.State -notin @('Completed', 'Failed', 'Stopped')) {
+        Stop-Job -Job $Job -ErrorAction SilentlyContinue
+    }
+    Remove-Job -Job $Job -Force -ErrorAction SilentlyContinue
+    if ([string]::IsNullOrWhiteSpace($failureDetails)) {
+        throw "$Description did not become ready within $TimeoutSeconds seconds."
+    }
+    throw "$Description did not become ready within $TimeoutSeconds seconds. Last output:`n$failureDetails"
+}
+
+function Open-SlmnBrowser {
+    param([Parameter(Mandatory)][string]$Url)
+
+    Write-SlmnSuccess "App ready: $Url"
+    Write-SlmnStatus 'Opening the preview in your browser...'
+    try {
+        Start-Process -FilePath $Url -ErrorAction Stop
+    } catch {
+        throw "The app is ready at $Url, but the default browser could not be opened: $($_.Exception.Message)"
+    }
+}
+
+function Start-SlmnDevServer {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Get-SlmnConfiguration).autoStartDev) {
+        Write-Host 'Automatic dev-server and browser preview are disabled in SLMN configuration.' -ForegroundColor DarkGray
+        return
+    }
+
+    $npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if (-not $npmCommand) {
+        throw "The npm.cmd command was not found. Install Node.js and npm to start the preview for $Path."
+    }
+
+    $isNextProject = Test-ProjectDependency -Path $Path -Name 'next'
+    if (-not $isNextProject -and -not (Test-ProjectDependency -Path $Path -Name 'vite')) {
+        throw "The project in $Path does not appear to use Vite or Next.js, so SLMN cannot select its preview URL safely."
+    }
+    $port = Get-SlmnAvailablePort
+    $url = "http://127.0.0.1:$port/"
+
+    Write-SlmnStatus 'Starting the development server and waiting for localhost...'
+    $job = Start-Job -ScriptBlock {
+        param($ProjectPath, $NpmPath, $UseNext, $Port)
+
+        Set-Location -LiteralPath $ProjectPath
+        if ($UseNext) {
+            & $NpmPath run dev -- --hostname 127.0.0.1 --port $Port
+        } else {
+            & $NpmPath run dev -- --host 127.0.0.1 --port $Port --strictPort
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm run dev failed with exit code $LASTEXITCODE."
+        }
+    } -ArgumentList $Path, $npmCommand.Source, $isNextProject, $port
+
+    $url = Wait-SlmnForPreview -Job $job -Url $url -Description "Starting $([System.IO.Path]::GetFileName($Path))"
+    if ($null -eq $script:SlmnPreviewJobs) {
+        $script:SlmnPreviewJobs = @{}
+    }
+    $script:SlmnPreviewJobs[$Path] = $job
+    Open-SlmnBrowser -Url $url
+}
+
+function Start-SlmnStaticPreview {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Get-SlmnConfiguration).autoStartDev) {
+        Write-Host 'Automatic dev-server and browser preview are disabled in SLMN configuration.' -ForegroundColor DarkGray
+        return
+    }
+
+    $indexPath = Join-Path $Path 'index.html'
+    if (-not (Test-Path -LiteralPath $indexPath)) {
+        throw "Static preview requires an index.html file in $Path."
+    }
+
+    $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $nodeCommand) {
+        Write-Warning 'Node.js was not found; opening the static project directly from disk instead of localhost.'
+        Open-SlmnBrowser -Url ([System.Uri]$indexPath).AbsoluteUri
+        return
+    }
+
+    $port = Get-SlmnAvailablePort
+
+    $staticServerScript = @'
+const http = require('http')
+const fs = require('fs')
+const path = require('path')
+
+const root = path.resolve(process.argv[1])
+const port = Number(process.argv[2])
+const contentTypes = {
+    '.css': 'text/css; charset=utf-8',
+    '.html': 'text/html; charset=utf-8',
+    '.ico': 'image/x-icon',
+    '.js': 'text/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+}
+
+http.createServer((request, response) => {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+        response.writeHead(405).end()
+        return
+    }
+
+    let pathname
+    try {
+        pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname)
+    } catch {
+        response.writeHead(400).end()
+        return
+    }
+
+    let filePath = path.resolve(root, `.${pathname}`)
+    const relativePath = path.relative(root, filePath)
+    if (relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+        response.writeHead(403).end()
+        return
+    }
+
+    try {
+        if (fs.statSync(filePath).isDirectory()) {
+            filePath = path.join(filePath, 'index.html')
+        }
+    } catch (error) {
+        response.writeHead(error.code === 'ENOENT' ? 404 : 500).end()
+        return
+    }
+
+    fs.readFile(filePath, (error, content) => {
+        if (error) {
+            response.writeHead(error.code === 'ENOENT' ? 404 : 500).end()
+            return
+        }
+
+        const type = contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream'
+        response.writeHead(200, {
+            'Cache-Control': 'no-store',
+            'Content-Type': type,
+            'X-Content-Type-Options': 'nosniff',
+        })
+        response.end(request.method === 'HEAD' ? undefined : content)
+    })
+}).listen(port, '127.0.0.1', () => {
+    console.log(`http://127.0.0.1:${port}/`)
+})
+'@
+
+    $job = Start-Job -ScriptBlock {
+        param($NodePath, $ServerScript, $ProjectPath, $Port)
+
+        & $NodePath -e $ServerScript $ProjectPath $Port
+        if ($LASTEXITCODE -ne 0) {
+            throw "The static preview server failed with exit code $LASTEXITCODE."
+        }
+    } -ArgumentList $nodeCommand.Source, $staticServerScript, $Path, $port
+
+    $url = Wait-SlmnForPreview -Job $job -Url "http://127.0.0.1:$port/" -Description "Serving $([System.IO.Path]::GetFileName($Path))"
+    if ($null -eq $script:SlmnPreviewJobs) {
+        $script:SlmnPreviewJobs = @{}
+    }
+    $script:SlmnPreviewJobs[$Path] = $job
+    Open-SlmnBrowser -Url $url
+}
+
+function Write-SlmnStatus {
+    param([Parameter(Mandatory)][string]$Message)
+
+    Write-Host "  > $Message" -ForegroundColor Cyan
+}
+
+function Write-SlmnSuccess {
+    param([Parameter(Mandatory)][string]$Message)
+
+    Write-Host "  [OK] $Message" -ForegroundColor Green
+}
+
+function Show-SlmnBanner {
+    param([switch]$Animate)
+
+    Write-Host ''
+    Write-Host '  +------------------------------------------+' -ForegroundColor DarkCyan
+    Write-Host '  |  ' -NoNewline -ForegroundColor DarkCyan
+    $title = 'SLMN Starter'
+    if ($Animate) {
+        foreach ($character in $title.ToCharArray()) {
+            Write-Host $character -NoNewline -ForegroundColor Cyan
+            Start-Sleep -Milliseconds 14
+        }
+    } else {
+        Write-Host $title -NoNewline -ForegroundColor Cyan
+    }
+    Write-Host '                         |' -ForegroundColor DarkCyan
+    Write-Host '  +------------------------------------------+' -ForegroundColor DarkCyan
 }
 
 function Confirm-Feature {
@@ -872,31 +1278,59 @@ function Confirm-Feature {
 
 function Select-StarterCommand {
     $options = @(
-        @{ Label = 'Vanilla'; Shortcut = '1 / V'; Keys = @('1', 'v'); Command = 'vanilla-project' },
-        @{ Label = 'Tailwind CSS'; Shortcut = '2 / T'; Keys = @('2', 't'); Command = 'tailwind-project' },
-        @{ Label = 'GSAP'; Shortcut = '3 / G'; Keys = @('3', 'g'); Command = 'gsap-project' },
-        @{ Label = 'Tailwind CSS + GSAP'; Shortcut = '4 / TG'; Keys = @('4', 'tg'); Command = 'tailwind-gsap-project' },
-        @{ Label = 'React'; Shortcut = '5 / R'; Keys = @('5', 'r'); Command = 'react-project' },
-        @{ Label = 'React + Tailwind CSS'; Shortcut = '6 / RT'; Keys = @('6', 'rt'); Command = 'react-tailwind-project' },
-        @{ Label = 'React + Tailwind CSS + GSAP'; Shortcut = '7 / RTG'; Keys = @('7', 'rtg'); Command = 'react-tailwind-gsap-project' },
-        @{ Label = 'SLMN App (flagship)'; Shortcut = '8 / A'; Keys = @('8', 'a'); Command = 'slmn-app' },
-        @{ Label = 'Vite (choose framework and variant)'; Shortcut = '9 / VITE'; Keys = @('9', 'vite'); Command = 'vite-app' },
-        @{ Label = 'Next.js'; Shortcut = '0 / NEXT'; Keys = @('0', 'next'); Command = 'next-app' }
+        @{ Group = 'CORE'; Label = 'Vanilla'; Shortcut = '1 / V'; Keys = @('1', 'v'); Badges = @(@{ Text = 'HTML'; Color = 'DarkYellow' }, @{ Text = 'CSS'; Color = 'Blue' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'vanilla-project' },
+        @{ Group = 'CORE'; Label = 'Tailwind CSS'; Shortcut = '2 / T'; Keys = @('2', 't'); Badges = @(@{ Text = 'TW'; Color = 'Cyan' }); Command = 'tailwind-project' },
+        @{ Group = 'CORE'; Label = 'GSAP'; Shortcut = '3 / G'; Keys = @('3', 'g'); Badges = @(@{ Text = 'GS'; Color = 'Green' }); Command = 'gsap-project' },
+        @{ Group = 'CORE'; Label = 'Tailwind CSS + GSAP'; Shortcut = '4 / TG'; Keys = @('4', 'tg'); Badges = @(@{ Text = 'TW'; Color = 'Cyan' }, @{ Text = 'GS'; Color = 'Green' }); Command = 'tailwind-gsap-project' },
+        @{ Group = 'REACT / JAVASCRIPT'; Label = 'React'; Shortcut = '5 / R'; Keys = @('5', 'r'); Badges = @(@{ Text = 'R'; Color = 'Blue' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'react-project' },
+        @{ Group = 'REACT / JAVASCRIPT'; Label = 'React + Tailwind CSS'; Shortcut = '6 / RT'; Keys = @('6', 'rt'); Badges = @(@{ Text = 'R'; Color = 'Blue' }, @{ Text = 'JS'; Color = 'Yellow' }, @{ Text = 'TW'; Color = 'Cyan' }); Command = 'react-tailwind-project' },
+        @{ Group = 'REACT / JAVASCRIPT'; Label = 'React + Tailwind CSS + GSAP'; Shortcut = '7 / RTG'; Keys = @('7', 'rtg'); Badges = @(@{ Text = 'R'; Color = 'Blue' }, @{ Text = 'JS'; Color = 'Yellow' }, @{ Text = 'TW'; Color = 'Cyan' }, @{ Text = 'GS'; Color = 'Green' }); Command = 'react-tailwind-gsap-project' },
+        @{ Group = 'REACT / TYPESCRIPT'; Label = 'React'; Shortcut = 'RTS'; Keys = @('rts'); Badges = @(@{ Text = 'R'; Color = 'Blue' }, @{ Text = 'TS'; Color = 'Cyan' }); Command = 'react-ts-project' },
+        @{ Group = 'REACT / TYPESCRIPT'; Label = 'React + Tailwind CSS'; Shortcut = 'RTTS'; Keys = @('rtts'); Badges = @(@{ Text = 'R'; Color = 'Blue' }, @{ Text = 'TS'; Color = 'Cyan' }, @{ Text = 'TW'; Color = 'Cyan' }); Command = 'react-tailwind-ts-project' },
+        @{ Group = 'REACT / TYPESCRIPT'; Label = 'React + Tailwind CSS + GSAP'; Shortcut = 'RTGTS'; Keys = @('rtgts'); Badges = @(@{ Text = 'R'; Color = 'Blue' }, @{ Text = 'TS'; Color = 'Cyan' }, @{ Text = 'TW'; Color = 'Cyan' }, @{ Text = 'GS'; Color = 'Green' }); Command = 'react-tailwind-gsap-ts-project' },
+        @{ Group = 'REACT / TYPESCRIPT'; Label = 'React + Tailwind + GSAP + Three.js'; Shortcut = '3DTS'; Keys = @('3dts'); Badges = @(@{ Text = 'R'; Color = 'Blue' }, @{ Text = 'TS'; Color = 'Cyan' }, @{ Text = '3D'; Color = 'Magenta' }); Command = 'react-tailwind-gsap-three-ts-project' },
+        @{ Group = 'REACT / TYPESCRIPT'; Label = 'SLMN App (flagship)'; Shortcut = 'ATS'; Keys = @('ats'); Badges = @(@{ Text = 'S'; Color = 'Cyan' }, @{ Text = 'TS'; Color = 'Cyan' }); Command = 'slmn-ts-app' },
+        @{ Group = 'FRAMEWORKS'; Label = 'SLMN App (JavaScript)'; Shortcut = '8 / A'; Keys = @('8', 'a'); Badges = @(@{ Text = 'S'; Color = 'Cyan' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'slmn-app' },
+        @{ Group = 'FRAMEWORKS'; Label = 'Vite (choose framework and variant)'; Shortcut = '9 / VITE'; Keys = @('9', 'vite'); Badges = @(@{ Text = 'V'; Color = 'Magenta' }); Command = 'vite-app' },
+        @{ Group = 'FRAMEWORKS'; Label = 'Next.js (TypeScript)'; Shortcut = 'NTS'; Keys = @('nts'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'TS'; Color = 'Cyan' }); Command = 'next-ts-app' },
+        @{ Group = 'FRAMEWORKS'; Label = 'Next.js'; Shortcut = '0 / NEXT'; Keys = @('0', 'next'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'next-app' }
     )
     $selectedIndex = 0
     $shortcutBuffer = ''
+    $animateBanner = $true
 
     while ($true) {
         Clear-Host
-        Write-Host 'SLMN Starter' -ForegroundColor Cyan
-        Write-Host 'Use Up/Down arrows and Enter, or type a shortcut.' -ForegroundColor DarkGray
+        Show-SlmnBanner -Animate:$animateBanner
+        $animateBanner = $false
+        Write-Host '  Create a clean project, ready for your next idea.' -ForegroundColor White
+        Write-Host '  Use Up/Down + Enter, or type a shortcut.' -ForegroundColor DarkGray
         Write-Host ''
 
+        $previousGroup = ''
         for ($index = 0; $index -lt $options.Count; $index++) {
-            $prefix = if ($index -eq $selectedIndex) { '> ' } else { '  ' }
-            $color = if ($index -eq $selectedIndex) { 'Blue' } else { 'White' }
-            Write-Host ("{0}{1,-10} {2}" -f $prefix, "[$($options[$index].Shortcut)]", $options[$index].Label) -ForegroundColor $color
+            if ($options[$index].Group -ne $previousGroup) {
+                Write-Host "  $($options[$index].Group)" -ForegroundColor DarkCyan
+                $previousGroup = $options[$index].Group
+            }
+
+            if ($index -eq $selectedIndex) {
+                Write-Host '  > ' -NoNewline -ForegroundColor Cyan -BackgroundColor DarkBlue
+                Write-Host ("{0,2} [{1,-8}]" -f ($index + 1), $options[$index].Shortcut) -NoNewline -ForegroundColor DarkGray -BackgroundColor DarkBlue
+                foreach ($badge in $options[$index].Badges) {
+                    Write-Host " [$($badge.Text)]" -NoNewline -ForegroundColor $badge.Color -BackgroundColor DarkBlue
+                }
+                Write-Host "  $($options[$index].Label)" -ForegroundColor White -BackgroundColor DarkBlue
+            } else {
+                Write-Host ("    {0,2} [{1,-8}]" -f ($index + 1), $options[$index].Shortcut) -NoNewline -ForegroundColor DarkGray
+                foreach ($badge in $options[$index].Badges) {
+                    Write-Host " [$($badge.Text)]" -NoNewline -ForegroundColor $badge.Color
+                }
+                Write-Host "  $($options[$index].Label)" -ForegroundColor DarkGray
+            }
         }
+        Write-Host ''
+        Write-Host '  Esc  Cancel' -ForegroundColor DarkGray
 
         $keyInfo = [Console]::ReadKey($true)
         switch ($keyInfo.Key) {
@@ -908,6 +1342,9 @@ function Select-StarterCommand {
             }
             'Enter' {
                 return $options[$selectedIndex].Command
+            }
+            'Escape' {
+                return $null
             }
             default {
                 if ([char]::IsControl($keyInfo.KeyChar)) {
@@ -1053,33 +1490,31 @@ function Set-FullDemoPage {
     $stylesPath = Join-Path $Path 'src/styles'
     New-Item -ItemType Directory -Path $componentPath, $threeComponentPath, $stylesPath -Force | Out-Null
 
-    $heroRef = if ($isTypeScript) { 'useRef<HTMLElement>(null)' } else { 'useRef(null)' }
-    $titleRef = if ($isTypeScript) { 'useRef<HTMLHeadingElement>(null)' } else { 'useRef(null)' }
+    $heroRef = if ($isTypeScript) { 'useRef<HTMLElement | null>(null)' } else { 'useRef(null)' }
+    $titleRef = if ($isTypeScript) { 'useRef<HTMLHeadingElement | null>(null)' } else { 'useRef(null)' }
     $techPillProps = if ($isTypeScript) { ': { name: string; detail: string; href: string; Icon: IconType }' } else { '' }
     $techPillTypeImport = if ($isTypeScript) { "import type { IconType } from 'react-icons'`n" } else { '' }
-    $canvasRef = if ($isTypeScript) { 'useRef<HTMLCanvasElement>(null)' } else { 'useRef(null)' }
+    $canvasRef = if ($isTypeScript) { 'useRef<HTMLCanvasElement | null>(null)' } else { 'useRef(null)' }
     $pointerEventType = if ($isTypeScript) { ': PointerEvent' } else { '' }
+    $languageName = if ($isTypeScript) { 'TypeScript' } else { 'JavaScript' }
+    $languageHref = if ($isTypeScript) { 'https://www.typescriptlang.org/' } else { 'https://developer.mozilla.org/docs/Web/JavaScript' }
+    $languageIconName = if ($isTypeScript) { 'SiTypescript' } else { 'SiJavascript' }
 
     @"
 import Hero from './components/Hero.$componentExtension'
-import './styles/app.css'
-import './styles/demo.css'
 
 export default function App() {
-    return (
-        <main className="app-shell">
-            <Hero />
-        </main>
-    )
+    return <Hero />
 }
 "@ | Set-Content -LiteralPath $appPath -Encoding utf8
 
     @"
 import { useLayoutEffect, useRef } from 'react'
 import gsap from 'gsap'
-import { SiGreensock, SiJavascript, SiReact, SiTailwindcss, SiThreedotjs, SiVite } from 'react-icons/si'
+import { SiGreensock, $languageIconName, SiReact, SiTailwindcss, SiThreedotjs, SiVite } from 'react-icons/si'
 import TechPill from './TechPill.$componentExtension'
 import ThreeScene from './three/ThreeScene.$componentExtension'
+import '../styles/demo.css'
 
 const technologies = [
     {
@@ -1095,10 +1530,10 @@ const technologies = [
         Icon: SiReact,
     },
     {
-        name: 'JavaScript',
+        name: '$languageName',
         detail: 'Language',
-        href: 'https://developer.mozilla.org/docs/Web/JavaScript',
-        Icon: SiJavascript,
+        href: '$languageHref',
+        Icon: $languageIconName,
     },
     {
         name: 'Tailwind CSS',
@@ -1295,20 +1730,6 @@ export default function ThreeScene() {
 "@ | Set-Content -LiteralPath (Join-Path $threeComponentPath "ThreeScene.$componentExtension") -Encoding utf8
 
 @'
-#root,
-.app-shell {
-    width: 100%;
-    min-height: 100svh;
-}
-
-#root {
-    max-width: none;
-    padding: 0;
-    margin: 0;
-}
-'@ | Set-Content -LiteralPath (Join-Path $stylesPath 'app.css') -Encoding utf8
-
-@'
 .demo-shell {
     min-height: 100vh;
     text-align: left;
@@ -1352,21 +1773,15 @@ export default function ThreeScene() {
     @'
 @import "tailwindcss";
 
-@theme {
-    --breakpoint-tab: 48rem;
-    --breakpoint-lap: 64rem;
-    --breakpoint-fhd: 120rem;
-    --breakpoint-2k: 160rem;
-    --breakpoint-4k: 240rem;
-}
-
-@layer base {
-    html {
-        @apply bg-neutral-900;
+    @theme {
+        --breakpoint-tab: 48rem;
+        --breakpoint-lap: 64rem;
+        --breakpoint-fhd: 120rem;
     }
 
+    @layer base {
     body {
-        @apply min-h-screen bg-neutral-900 text-white antialiased;
+            @apply min-h-screen bg-neutral-900 font-sans text-white antialiased;
     }
 }
 '@ | Set-Content -LiteralPath (Join-Path $Path 'src/index.css') -Encoding utf8
@@ -1389,6 +1804,7 @@ export default function ThreeScene() {
     Remove-Item -LiteralPath (Join-Path $Path 'src/assets') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $Path 'src/App.css') -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $Path 'public') -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $stylesPath 'app.css') -Force -ErrorAction SilentlyContinue
 }
 
 function Set-ReactStarterDemo {
@@ -1412,11 +1828,47 @@ function Set-ReactStarterDemo {
     $componentsPath = Join-Path $Path 'src/components'
     $stylesPath = Join-Path $Path 'src/styles'
     New-Item -ItemType Directory -Path $componentsPath, $stylesPath -Force | Out-Null
+    $indexStyles = if ($IncludeTailwind) {
+@'
+@import "tailwindcss";
+
+@layer base {
+    html {
+        background-color: #171717;
+    }
+
+    body {
+        min-width: 320px;
+        min-height: 100svh;
+        margin: 0;
+        background-color: #171717;
+        color: #ffffff;
+        font-family: "Aptos", "Segoe UI", sans-serif;
+    }
+}
+'@
+    } else {
+@'
+html {
+    background-color: #171717;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100svh;
+    margin: 0;
+    background-color: #171717;
+    color: #ffffff;
+    font-family: "Aptos", "Segoe UI", sans-serif;
+}
+'@
+    }
+    Set-Content -LiteralPath (Join-Path $Path 'src/index.css') -Value $indexStyles -Encoding utf8
 
     $technologies = @(
         @{ Name = 'Vite'; Detail = 'Build tooling'; Href = 'https://vite.dev/' },
         @{ Name = 'React'; Detail = 'UI library'; Href = 'https://react.dev/' },
-        @{ Name = 'JavaScript'; Detail = 'Language'; Href = 'https://developer.mozilla.org/docs/Web/JavaScript' }
+        @{ Name = $(if ($componentExtension -eq 'tsx') { 'TypeScript' } else { 'JavaScript' }); Detail = 'Language'; Href = $(if ($componentExtension -eq 'tsx') { 'https://www.typescriptlang.org/' } else { 'https://developer.mozilla.org/docs/Web/JavaScript' }) }
     )
     if ($IncludeTailwind) {
         $technologies += @{ Name = 'Tailwind CSS'; Detail = 'Utility styling'; Href = 'https://tailwindcss.com/' }
@@ -1434,7 +1886,11 @@ function Set-ReactStarterDemo {
 "@
     }) -join ''
     $gsapImports = if ($IncludeGsap) { "import { useLayoutEffect, useRef } from 'react'`nimport gsap from 'gsap'" } else { '' }
-    $heroReference = if ($IncludeGsap) { "    const heroRef = useRef(null)`n    const titleRef = useRef(null)`n" } else { '' }
+    $heroReference = if ($IncludeGsap -and $componentExtension -eq 'tsx') {
+        "    const heroRef = useRef<HTMLElement | null>(null)`n    const titleRef = useRef<HTMLHeadingElement | null>(null)`n"
+    } elseif ($IncludeGsap) {
+        "    const heroRef = useRef(null)`n    const titleRef = useRef(null)`n"
+    } else { '' }
     $animation = if ($IncludeGsap) {
 @'
     useLayoutEffect(() => {
@@ -1466,15 +1922,9 @@ function Set-ReactStarterDemo {
 
     @"
 import Hero from './components/Hero.$componentExtension'
-import './styles/app.css'
-import './styles/demo.css'
 
 export default function App() {
-    return (
-        <main className="app-shell">
-            <Hero />
-        </main>
-    )
+    return <Hero />
 }
 "@ | Set-Content -LiteralPath $appPath -Encoding utf8
 
@@ -1482,6 +1932,7 @@ export default function App() {
 $gsapImports
 import TechPill from './TechPill.$componentExtension'
 import StarterVisual from './StarterVisual.$componentExtension'
+import '../styles/demo.css'
 
 const technologies = [
 $technologyItems]
@@ -1564,30 +2015,6 @@ export default function StarterVisual() {
     )
 }
 '@ | Set-Content -LiteralPath (Join-Path $componentsPath "StarterVisual.$componentExtension") -Encoding utf8
-
-    @'
-#root,
-.app-shell {
-    width: 100%;
-    min-height: 100svh;
-}
-
-html,
-body {
-    min-width: 320px;
-    min-height: 100svh;
-    margin: 0;
-    background-color: #171717;
-    background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
-    background-size: 3rem 3rem;
-}
-
-#root {
-    max-width: none;
-    padding: 0;
-    margin: 0;
-}
-'@ | Set-Content -LiteralPath (Join-Path $stylesPath 'app.css') -Encoding utf8
 
     @'
 .demo-shell {
@@ -1865,10 +2292,8 @@ body {
     Remove-Item -LiteralPath (Join-Path $Path 'src/assets') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $Path 'public') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $Path 'src/App.css') -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath (Join-Path $Path 'eslint.config.js') -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $Path 'README.md') -Force -ErrorAction SilentlyContinue
-    Invoke-Npm pkg delete scripts.lint
-    Invoke-Npm uninstall eslint @eslint/js eslint-plugin-react-hooks eslint-plugin-react-refresh globals
+    Remove-Item -LiteralPath (Join-Path $stylesPath 'app.css') -Force -ErrorAction SilentlyContinue
 }
 
 function Set-NextStarterScreen {
@@ -1920,9 +2345,14 @@ function Set-NextStarterScreen {
 "@
     }) -join "`n"
     $gsapImport = if ($IncludeGsap) { "import { useLayoutEffect, useRef } from 'react'`nimport gsap from 'gsap'" } else { '' }
+    $screenRefDeclaration = if ($IncludeGsap -and $componentExtension -eq 'tsx') {
+        '    const screenRef = useRef<HTMLElement | null>(null)'
+    } else {
+        '    const screenRef = useRef(null)'
+    }
     $animation = if ($IncludeGsap) {
-@'
-    const screenRef = useRef(null)
+@"
+$screenRefDeclaration
 
     useLayoutEffect(() => {
         const context = gsap.context(() => {
@@ -1937,7 +2367,7 @@ function Set-NextStarterScreen {
 
         return () => context.revert()
     }, [])
-'@
+"@
     } else { '' }
     $screenReference = if ($IncludeGsap) { ' ref={screenRef}' } else { '' }
     $screenClass = if ($IncludeGsap) { 'slmn-next-shell slmn-next-use-gsap' } else { 'slmn-next-shell' }
@@ -2002,66 +2432,8 @@ export default function Home() {
 }
 "@ | Set-Content -LiteralPath $pagePath -Encoding utf8
 
-    @'
-.shell {
-    display: grid;
-    min-height: 100vh;
-    padding: 1.5rem;
-    color: #ffffff;
-    background-color: #171717;
-    background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
-    background-size: 3rem 3rem;
-    place-items: center;
-}
-
-.content {
-    width: min(100%, 56rem);
-}
-
-.kicker {
-    margin: 0 0 1rem;
-    color: #93c5fd;
-    font-size: 0.875rem;
-    font-weight: 600;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-}
-
-.content h1 {
-    margin: 0;
-    font-size: clamp(2.5rem, 7vw, 4.75rem);
-    font-weight: 600;
-    line-height: 1.1;
-}
-
-.project {
-    margin: 1.25rem 0 0;
-    color: #d4d4d4;
-    font-size: clamp(1rem, 3vw, 1.25rem);
-}
-
-.pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.625rem;
-    margin-top: 2rem;
-}
-
-.pill {
-    padding: 0.625rem 0.875rem;
-    color: #dbeafe;
-    font-size: 0.875rem;
-    font-weight: 600;
-    background: rgb(96 165 250 / 0.14);
-    border: 1px solid rgb(147 197 253 / 0.34);
-}
-
-@media (min-width: 48rem) {
-    .shell {
-        padding: 2.5rem;
-    }
-}
-    @'
+    $globalStyles = if ($IncludeTailwind) { "@import `"tailwindcss`";`n`n" } else { '' }
+    $globalStyles += @'
 * {
     box-sizing: border-box;
 }
@@ -2075,7 +2447,10 @@ body {
     background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
     background-size: 3rem 3rem;
 }
+'@
+    Set-Content -LiteralPath (Join-Path $appDirectory 'globals.css') -Value $globalStyles -Encoding utf8
 
+    @'
 .slmn-next-shell {
     display: grid;
     width: 100%;
@@ -2398,7 +2773,7 @@ function Complete-InteractiveProject {
 
     Set-Location $Path
     Open-ProjectEditor $Path
-    Start-SlmnDevServer
+    Start-SlmnDevServer -Path $Path
 }
 
 # -----------------------------
@@ -2442,6 +2817,7 @@ function vanilla-project {
 
     Set-StaticStarterScreen -Path $path -Name $name -Technologies 'HTML', 'CSS', 'JavaScript'
     Open-ProjectEditor $path
+    Start-SlmnStaticPreview -Path $path
 }
 
 # -----------------------------
@@ -2528,6 +2904,7 @@ console.log('Page loaded')
 
     Set-StaticStarterScreen -Path $path -Name $name -Technologies 'Vite', 'Tailwind CSS', 'JavaScript' -UseVite
     Open-ProjectEditor $path
+    Start-SlmnDevServer -Path $path
 }
 
 # -----------------------------
@@ -2583,6 +2960,7 @@ console.log('Page loaded')
 
     Set-StaticStarterScreen -Path $path -Name $name -Technologies 'HTML', 'CSS', 'JavaScript', 'GSAP' -UseGsap
     Open-ProjectEditor $path
+    Start-SlmnStaticPreview -Path $path
 }
 
 # -----------------------------
@@ -2677,6 +3055,7 @@ console.log('Page loaded')
 
     Set-StaticStarterScreen -Path $path -Name $name -Technologies 'Vite', 'Tailwind CSS', 'JavaScript', 'GSAP' -UseVite -UseGsap
     Open-ProjectEditor $path
+    Start-SlmnDevServer -Path $path
 }
 
 # -----------------------------
@@ -2734,7 +3113,7 @@ createRoot(document.getElementById('root')).render(
     Set-ReactStarterDemo -Path $path -Name $name
 
     Open-ProjectEditor $path
-    Start-SlmnDevServer
+    Start-SlmnDevServer -Path $path
 }
 
 # -----------------------------
@@ -2813,7 +3192,7 @@ createRoot(document.getElementById('root')).render(
     Set-ReactStarterDemo -Path $path -Name $name -IncludeTailwind
 
     Open-ProjectEditor $path
-    Start-SlmnDevServer
+    Start-SlmnDevServer -Path $path
 }
 
 # -----------------------------
@@ -2844,7 +3223,7 @@ function react-tailwind-gsap-project {
     Set-ReactStarterDemo -Path $path -Name $name -IncludeTailwind -IncludeGsap
 
     Open-ProjectEditor $path
-    Start-SlmnDevServer
+    Start-SlmnDevServer -Path $path
 }
 
 # -----------------------------
@@ -2875,7 +3254,117 @@ function react-tailwind-gsap-three-project {
     Set-FullDemoPage -Path $path -Name $name
 
     Open-ProjectEditor $path
-    Start-SlmnDevServer
+    Start-SlmnDevServer -Path $path
+}
+
+function New-ReactTsProject {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [string]$ProjectRoot,
+        [switch]$IncludeTailwind,
+        [switch]$IncludeGsap,
+        [switch]$IncludeThree,
+        [switch]$UseFullDemo
+    )
+
+    if ($IncludeThree -and (-not $IncludeTailwind -or -not $IncludeGsap)) {
+        throw 'The Three.js TypeScript starter requires Tailwind CSS and GSAP.'
+    }
+    if ($UseFullDemo -and -not $IncludeThree) {
+        throw 'The full SLMN demo requires the Three.js dependencies.'
+    }
+
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $Name
+    if (Test-Path -LiteralPath $path) {
+        throw "Project already exists: $path"
+    }
+
+    Set-Location $projectsRoot
+    Write-SlmnStatus "Scaffolding the React + TypeScript project '$Name'..."
+    npm create vite@latest $Name -- --no-interactive --template react-ts
+    if ($LASTEXITCODE -ne 0) {
+        throw "Vite TypeScript scaffold failed for '$Name'."
+    }
+
+    if (-not (Test-Path -LiteralPath (Join-Path $path 'src/App.tsx')) -or
+        -not (Test-Path -LiteralPath (Join-Path $path 'tsconfig.json'))) {
+        throw "Vite did not create the expected React TypeScript project: $path"
+    }
+
+    Set-Location $path
+    Invoke-Npm install
+    if ($IncludeTailwind) {
+        Initialize-ViteTailwind $path
+    }
+    if ($IncludeGsap) {
+        Invoke-Npm install gsap
+    }
+    if ($IncludeThree) {
+        Invoke-Npm install three react-icons
+        Invoke-NpmDevInstall @types/three
+    }
+    if ($UseFullDemo) {
+        Set-FullDemoPage -Path $path -Name $Name
+    } else {
+        Set-ReactStarterDemo -Path $path -Name $Name -IncludeTailwind:$IncludeTailwind -IncludeGsap:$IncludeGsap
+    }
+
+    Open-ProjectEditor $path
+    Start-SlmnDevServer -Path $path
+}
+
+function react-ts-project {
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
+
+    New-ReactTsProject -Name $name -ProjectRoot $ProjectRoot
+}
+
+function react-tailwind-ts-project {
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
+
+    New-ReactTsProject -Name $name -ProjectRoot $ProjectRoot -IncludeTailwind
+}
+
+function react-tailwind-gsap-ts-project {
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
+
+    New-ReactTsProject -Name $name -ProjectRoot $ProjectRoot -IncludeTailwind -IncludeGsap
+}
+
+function react-tailwind-gsap-three-ts-project {
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
+
+    New-ReactTsProject -Name $name -ProjectRoot $ProjectRoot -IncludeTailwind -IncludeGsap -IncludeThree -UseFullDemo
+}
+
+function slmn-ts-app {
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
+
+    $projectName = ($name.Trim().ToLowerInvariant() -replace '[^a-z0-9._-]+', '-').Trim([char[]]'.-_')
+    if ([string]::IsNullOrWhiteSpace($projectName)) {
+        throw 'Project name must contain at least one letter or number.'
+    }
+
+    if ($projectName -ne $name) {
+        Write-Host "Using project folder name: $projectName" -ForegroundColor DarkGray
+    }
+    New-ReactTsProject -Name $projectName -ProjectRoot $ProjectRoot -IncludeTailwind -IncludeGsap -IncludeThree -UseFullDemo
 }
 
 # -----------------------------
@@ -2952,7 +3441,7 @@ function slmn-app {
 
     Set-Location $path
     Open-ProjectEditor $path
-    Start-SlmnDevServer
+    Start-SlmnDevServer -Path $path
 }
 
 function full-app {
@@ -2971,13 +3460,21 @@ function slmn-starter {
     param([Alias('Path')][string]$ProjectRoot)
 
     $command = Select-StarterCommand
+    if ([string]::IsNullOrWhiteSpace($command)) {
+        Write-Host 'Starter selection cancelled.' -ForegroundColor DarkGray
+        return
+    }
+
     Clear-Host
-    Write-Host "Selected: $command" -ForegroundColor Cyan
-    $name = Read-Host 'Project name'
+    Show-SlmnBanner
+    Write-SlmnStatus "Selected $command"
+    Write-Host '  Project name: ' -NoNewline -ForegroundColor Cyan
+    $name = Read-Host
     if ([string]::IsNullOrWhiteSpace($name)) {
         throw 'A project name is required.'
     }
 
+    Write-SlmnStatus "Creating '$($name.Trim())'..."
     & $command $name.Trim() -Path $ProjectRoot
 }
 
@@ -2997,9 +3494,32 @@ function next-app {
     }
 
     Set-Location $projectsRoot
+    Write-SlmnStatus "Scaffolding the Next.js project '$name'..."
     npx create-next-app@latest $name
     if ($LASTEXITCODE -ne 0) {
         throw "Next.js setup failed for '$name'."
+    }
+
+    Complete-InteractiveProject -Path $path -Name $name -Stack Next
+}
+
+function next-ts-app {
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
+
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $path = Join-Path $projectsRoot $name
+    if (Test-Path -LiteralPath $path) {
+        throw "Project already exists: $path"
+    }
+
+    Set-Location $projectsRoot
+    Write-SlmnStatus "Scaffolding the Next.js + TypeScript project '$name'..."
+    npx create-next-app@latest $name --typescript
+    if ($LASTEXITCODE -ne 0) {
+        throw "Next.js TypeScript setup failed for '$name'."
     }
 
     Complete-InteractiveProject -Path $path -Name $name -Stack Next
