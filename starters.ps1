@@ -8,6 +8,7 @@
 #   slmn-starter
 #
 #   slmn-app "my-app"
+#   slmn-next "my-next-app"
 #
 #   slmn-full "my-app"
 #
@@ -1214,6 +1215,35 @@ function Get-SlmnAvailablePort {
     }
 }
 
+function Test-SlmnPortAvailable {
+    param([Parameter(Mandatory)][ValidateRange(1, 65535)][int]$Port)
+
+    if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+        $connection = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue | Select-Object -First 1
+        return ($null -eq $connection)
+    }
+
+    $portProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+    try {
+        $portProbe.Start()
+        return $true
+    } catch [System.Net.Sockets.SocketException] {
+        return $false
+    } finally {
+        $portProbe.Stop()
+    }
+}
+
+function Get-SlmnNextAvailablePort {
+    for ($port = 3000; $port -le 3099; $port++) {
+        if (Test-SlmnPortAvailable -Port $port) {
+            return $port
+        }
+    }
+
+    throw 'No available localhost port was found between 3000 and 3099 for the Next.js preview.'
+}
+
 function Wait-SlmnForPreview {
     param(
         [Parameter(Mandatory)]$Job,
@@ -1285,8 +1315,12 @@ function Start-SlmnDevServer {
     if (-not $isNextProject -and -not (Test-ProjectDependency -Path $Path -Name 'vite')) {
         throw "The project in $Path does not appear to use Vite or Next.js, so SLMN cannot select its preview URL safely."
     }
-    $port = Get-SlmnAvailablePort
-    $url = "http://127.0.0.1:$port/"
+    $port = if ($isNextProject) { Get-SlmnNextAvailablePort } else { Get-SlmnAvailablePort }
+    if ($isNextProject) {
+        $url = "http://localhost:$port/"
+    } else {
+        $url = "http://127.0.0.1:$port/"
+    }
 
     Write-SlmnStatus 'Starting the development server and waiting for localhost...'
     $job = Start-Job -ScriptBlock {
@@ -1294,7 +1328,7 @@ function Start-SlmnDevServer {
 
         Set-Location -LiteralPath $ProjectPath
         if ($UseNext) {
-            & $NpmPath run dev -- --hostname 127.0.0.1 --port $Port
+            & $NpmPath run dev -- --hostname localhost --port $Port
         } else {
             & $NpmPath run dev -- --host 127.0.0.1 --port $Port --strictPort
         }
@@ -1568,6 +1602,7 @@ function Select-StarterCommand {
         @{ Group = 'REACT / TYPESCRIPT'; Label = 'SLMN App (flagship)'; Shortcut = 'ATS'; Keys = @('ats'); Badges = @(@{ Text = 'S'; Color = 'Cyan' }, @{ Text = 'TS'; Color = 'Cyan' }); Command = 'slmn-ts-app' },
         @{ Group = 'FULL-STACK'; Label = 'SLMN Full (Full-stack)'; Shortcut = 'FTS'; Keys = @('fts'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'TS'; Color = 'Cyan' }, @{ Text = 'DB'; Color = 'Green' }, @{ Text = 'AI'; Color = 'Magenta' }); Command = 'slmn-full' },
         @{ Group = 'FRAMEWORKS'; Label = 'SLMN App (JavaScript)'; Shortcut = '8 / A'; Keys = @('8', 'a'); Badges = @(@{ Text = 'S'; Color = 'Cyan' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'slmn-app' },
+        @{ Group = 'FRAMEWORKS'; Label = 'SLMN Next (Next.js Flagship)'; Shortcut = 'SLN'; Keys = @('sln'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'TS'; Color = 'Cyan' }, @{ Text = '3D'; Color = 'Magenta' }); Command = 'slmn-next' },
         @{ Group = 'FRAMEWORKS'; Label = 'Vite (choose framework and variant)'; Shortcut = '9 / VITE'; Keys = @('9', 'vite'); Badges = @(@{ Text = 'V'; Color = 'Magenta' }); Command = 'vite-app' },
         @{ Group = 'FRAMEWORKS'; Label = 'Next.js (TypeScript)'; Shortcut = 'NTS'; Keys = @('nts'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'TS'; Color = 'Cyan' }); Command = 'next-ts-app' },
         @{ Group = 'FRAMEWORKS'; Label = 'Next.js'; Shortcut = '0 / NEXT'; Keys = @('0', 'next'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'next-app' },
@@ -3766,6 +3801,887 @@ function slmn-app {
 
     Set-Location $path
     Open-ProjectEditor $path
+    Start-SlmnDevServer -Path $path
+}
+
+function Write-SlmnNextFile {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$RelativePath,
+        [Parameter(Mandatory)][string]$Content
+    )
+
+    $filePath = Join-Path $Path $RelativePath
+    $directory = Split-Path -Parent $filePath
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    [System.IO.File]::WriteAllText($filePath, $Content, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Write-SlmnNextProject {
+    param([Parameter(Mandatory)][string]$Path)
+
+    Write-SlmnNextFile -Path $Path -RelativePath 'src/app/layout.tsx' -Content @'
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Prism - SLMN Next",
+  description: "A Next.js flagship starter for building beyond the default.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+'@
+
+    Write-SlmnNextFile -Path $Path -RelativePath 'src/app/page.tsx' -Content @'
+import StarterExperience from "@/components/StarterExperience";
+
+export default function Home() {
+  return <StarterExperience />;
+}
+'@
+
+    Write-SlmnNextFile -Path $Path -RelativePath 'src/components/StarterExperience.tsx' -Content @'
+"use client";
+
+import { useEffect } from "react";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import PrismScene from "@/components/PrismScene";
+
+const technologies = [
+  {
+    number: "01",
+    name: "Next.js",
+    detail: "App Router",
+    href: "https://nextjs.org/docs/app",
+    tone: "electric",
+  },
+  {
+    number: "02",
+    name: "React",
+    detail: "UI foundation",
+    href: "https://react.dev",
+    tone: "cyan",
+  },
+  {
+    number: "03",
+    name: "TypeScript",
+    detail: "Typed by design",
+    href: "https://www.typescriptlang.org/docs/",
+    tone: "blue",
+  },
+  {
+    number: "04",
+    name: "Tailwind CSS",
+    detail: "Version 4",
+    href: "https://tailwindcss.com/docs",
+    tone: "teal",
+  },
+  {
+    number: "05",
+    name: "GSAP",
+    detail: "Motion system",
+    href: "https://gsap.com/docs/",
+    tone: "green",
+  },
+  {
+    number: "06",
+    name: "Three.js",
+    detail: "Realtime canvas",
+    href: "https://threejs.org/docs/",
+    tone: "silver",
+  },
+];
+
+export default function StarterExperience() {
+  useEffect(() => {
+    gsap.registerPlugin(ScrollTrigger);
+    const context = gsap.context(() => {
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reducedMotion) return;
+
+      gsap.from("[data-hero-reveal]", {
+        y: 22,
+        opacity: 0,
+        duration: 0.85,
+        stagger: 0.1,
+        ease: "power3.out",
+      });
+
+      gsap.utils.toArray<HTMLElement>("[data-stack-card]").forEach((card, index) => {
+        gsap.from(card, {
+          y: 28,
+          opacity: 0,
+          duration: 0.7,
+          delay: (index % 3) * 0.08,
+          ease: "power2.out",
+          scrollTrigger: {
+            trigger: card,
+            start: "top 88%",
+            once: true,
+          },
+        });
+      });
+    });
+
+    return () => context.revert();
+  }, []);
+
+  return (
+    <main className="experience-shell">
+      <div className="ambient ambient-one" aria-hidden="true" />
+      <div className="ambient ambient-two" aria-hidden="true" />
+      <div className="ambient ambient-three" aria-hidden="true" />
+      <div className="particle-field particle-field-one" aria-hidden="true" />
+      <div className="particle-field particle-field-two" aria-hidden="true" />
+      <div className="grain" aria-hidden="true" />
+
+      <header className="topbar">
+        <a className="wordmark" href="#top" aria-label="Prism home">
+          <span className="wordmark-glyph" aria-hidden="true">S</span>
+          <span>SLMN<span className="wordmark-separator">/</span>NEXT</span>
+        </a>
+        <a className="topbar-link" href="#stack">
+          Explore the stack
+          <svg className="interface-icon" aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+            <path d="m4 4 8 8M6 12h6V6" />
+          </svg>
+        </a>
+      </header>
+
+      <section className="hero" id="top" aria-labelledby="hero-title">
+        <div className="hero-copy">
+          <p className="eyebrow" data-hero-reveal>
+            <span className="status-dot" /> A sharper starting point
+          </p>
+          <h1 id="hero-title" data-hero-reveal>
+            Build beyond
+            <span>the default.</span>
+          </h1>
+          <p className="hero-description" data-hero-reveal>
+            A considered canvas for ambitious ideas. Modern foundations,
+            expressive motion, and room to make it yours.
+          </p>
+          <div className="hero-actions" data-hero-reveal>
+            <a className="primary-link" href="#stack">
+              Explore the toolkit
+              <svg className="interface-icon" aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                <path d="M4 12 12 4M5 4h7v7" />
+              </svg>
+            </a>
+            <span className="release-note">APP ROUTER <i /> TYPESCRIPT</span>
+          </div>
+        </div>
+
+        <div className="visual-wrap" data-hero-reveal>
+          <div className="visual-card">
+            <div className="visual-grid" aria-hidden="true" />
+            <div className="visual-topline">
+              <span>FIG. 01 / PRISM ENGINE</span>
+              <span className="live-indicator"><i /> LIVE</span>
+            </div>
+            <PrismScene />
+            <div className="visual-caption">
+              <span className="caption-index">01</span>
+              <div>
+                <strong>Form in motion</strong>
+                <span>Move your pointer to explore</span>
+              </div>
+              <span className="caption-crosshair" aria-hidden="true">+</span>
+            </div>
+          </div>
+          <span className="orbit-label orbit-label-one">REALTIME / 3D</span>
+          <span className="orbit-label orbit-label-two">INTERACTIVE BY DESIGN</span>
+        </div>
+
+        <div className="hero-foot" aria-hidden="true">
+          <span>DESIGNED TO DISAPPEAR WHEN YOU ARE READY</span>
+          <span className="scroll-hint">
+            SCROLL TO EXPLORE
+            <svg className="interface-icon" focusable="false" viewBox="0 0 16 16">
+              <path d="M8 3v10m-4-4 4 4 4-4" />
+            </svg>
+          </span>
+        </div>
+      </section>
+
+      <section className="stack-section" id="stack" aria-labelledby="stack-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow"><span className="section-index">01</span> THE FOUNDATION</p>
+            <h2 id="stack-title">Every layer, <span>in sync.</span></h2>
+          </div>
+          <p className="section-intro">
+            A focused set of tools for a fast, expressive, production-ready
+            front end. Each one has a place here.
+          </p>
+        </div>
+
+        <div className="stack-grid">
+          {technologies.map((technology) => (
+            <a
+              className={`stack-card stack-card-${technology.tone}`}
+              data-stack-card
+              href={technology.href}
+              key={technology.name}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <div className="stack-card-top">
+                <span className="stack-number">{technology.number}</span>
+                <svg className="stack-arrow" aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                  <path d="M4 12 12 4M5 4h7v7" />
+                </svg>
+              </div>
+              <div className="stack-card-bottom">
+                <span className="stack-orb" aria-hidden="true" />
+                <div>
+                  <h3>{technology.name}</h3>
+                  <p>{technology.detail}</p>
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      <footer className="footer">
+        <a className="wordmark footer-wordmark" href="#top">
+          <span className="wordmark-glyph" aria-hidden="true">S</span>
+          <span>SLMN<span className="wordmark-separator">/</span>NEXT</span>
+        </a>
+        <p>Your canvas. Your call.</p>
+        <span className="footer-note">REMOVE THE DEMO. KEEP THE FOUNDATION.</span>
+      </footer>
+    </main>
+  );
+}
+'@
+
+    Write-SlmnNextFile -Path $Path -RelativePath 'src/components/PrismScene.tsx' -Content @'
+"use client";
+
+import { useEffect, useRef } from "react";
+import * as THREE from "three";
+
+export default function PrismScene() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
+    } catch (error) {
+      console.error("Prism scene could not initialize WebGL.", error);
+      const fallback = document.createElement("div");
+      fallback.className = "scene-fallback";
+      fallback.setAttribute("role", "status");
+      const shape = document.createElement("span");
+      shape.className = "fallback-shape";
+      shape.setAttribute("aria-hidden", "true");
+      const message = document.createElement("span");
+      message.textContent = "3D preview is unavailable in this browser.";
+      fallback.append(shape, message);
+      container.appendChild(fallback);
+      return () => fallback.remove();
+    }
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 40);
+    camera.position.set(0, 0, 7);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setClearColor(0x000000, 0);
+    container.appendChild(renderer.domElement);
+
+    const core = new THREE.Group();
+    scene.add(core);
+
+    const crystalMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x9de9ff,
+      metalness: 0.48,
+      roughness: 0.19,
+      clearcoat: 1,
+      clearcoatRoughness: 0.12,
+      emissive: 0x123349,
+      emissiveIntensity: 0.65,
+      flatShading: true,
+    });
+    const crystal = new THREE.Mesh(new THREE.IcosahedronGeometry(1.12, 1), crystalMaterial);
+    core.add(crystal);
+
+    const innerCrystal = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.69, 1),
+      new THREE.MeshStandardMaterial({
+        color: 0x83b6ff,
+        metalness: 0.75,
+        roughness: 0.23,
+        flatShading: true,
+      }),
+    );
+    innerCrystal.rotation.set(0.35, 0.2, 0.6);
+    core.add(innerCrystal);
+
+    const orbitMaterial = new THREE.MeshBasicMaterial({
+      color: 0x8bdcf7,
+      transparent: true,
+      opacity: 0.36,
+    });
+    const orbits = [0, 1, 2].map((index) => {
+      const orbit = new THREE.Mesh(new THREE.TorusGeometry(1.58 + index * 0.14, 0.006, 5, 112), orbitMaterial.clone());
+      orbit.rotation.set(0.7 + index * 0.75, 0.25 + index * 0.38, index * 0.2);
+      core.add(orbit);
+      return orbit;
+    });
+
+    scene.add(new THREE.AmbientLight(0x9bc8ff, 1.25));
+    const keyLight = new THREE.PointLight(0x80dcff, 28, 18);
+    keyLight.position.set(-3, 3, 4);
+    scene.add(keyLight);
+    const rimLight = new THREE.PointLight(0x6baeff, 18, 16);
+    rimLight.position.set(3, -2, -2);
+    scene.add(rimLight);
+
+    const resizeObserver = new ResizeObserver(() => {
+      const { width, height } = container.getBoundingClientRect();
+      if (width === 0 || height === 0) return;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height, false);
+      renderer.render(scene, camera);
+    });
+    resizeObserver.observe(container);
+
+    const pointer = new THREE.Vector2();
+    const onPointerMove = (event: PointerEvent) => {
+      const bounds = container.getBoundingClientRect();
+      pointer.set(
+        ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+        -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+      );
+    };
+    const onPointerLeave = () => pointer.set(0, 0);
+    container.addEventListener("pointermove", onPointerMove);
+    container.addEventListener("pointerleave", onPointerLeave);
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let frame = 0;
+    let elapsed = 0;
+    let previousTime = 0;
+    let visible = true;
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      if (visible && !reducedMotion && frame === 0) frame = requestAnimationFrame(animate);
+    });
+    observer.observe(container);
+
+    const animate = (time: number) => {
+      frame = 0;
+      if (!visible) return;
+      const delta = previousTime === 0 ? 0 : Math.min((time - previousTime) / 1000, 0.04);
+      previousTime = time;
+      elapsed += delta;
+      core.rotation.y += (pointer.x * 0.2 + Math.sin(elapsed * 0.32) * 0.08 - core.rotation.y) * 0.035;
+      core.rotation.x += (-pointer.y * 0.13 + Math.sin(elapsed * 0.24) * 0.04 - core.rotation.x) * 0.035;
+      innerCrystal.rotation.y += delta * 0.24;
+      orbits.forEach((orbit, index) => {
+        orbit.rotation.z += delta * (index % 2 === 0 ? 0.035 : -0.025);
+      });
+      renderer.render(scene, camera);
+      frame = requestAnimationFrame(animate);
+    };
+
+    if (reducedMotion) {
+      renderer.render(scene, camera);
+    } else {
+      frame = requestAnimationFrame(animate);
+    }
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      resizeObserver.disconnect();
+      container.removeEventListener("pointermove", onPointerMove);
+      container.removeEventListener("pointerleave", onPointerLeave);
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          materials.forEach((material) => material.dispose());
+        }
+      });
+      renderer.dispose();
+      renderer.domElement.remove();
+    };
+  }, []);
+
+  return (
+    <div className="prism-canvas" ref={containerRef} aria-label="Interactive faceted 3D prism">
+    </div>
+  );
+}
+'@
+
+    Write-SlmnNextFile -Path $Path -RelativePath 'src/app/globals.css' -Content @'
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --ink: #f2f3f8;
+  --muted: #969aaa;
+  --line: rgba(226, 231, 255, 0.11);
+  --glass: rgba(19, 22, 35, 0.66);
+  --blue: #8dbfff;
+  --cyan: #9de9ff;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: #090a10;
+  color: var(--ink);
+  font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+::selection { color: #090a10; background: #b7eaff; }
+
+.experience-shell {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  overflow: clip;
+  padding: 0 max(6vw, calc((100vw - 1380px) / 2));
+  background:
+    radial-gradient(ellipse at 71% 24%, rgba(54, 115, 196, 0.2), transparent 38%),
+    radial-gradient(ellipse at 13% 68%, rgba(35, 116, 153, 0.14), transparent 34%),
+    #090a10;
+}
+.ambient {
+  position: absolute;
+  z-index: -1;
+  width: 36rem;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(112px);
+  opacity: 0.16;
+  pointer-events: none;
+  animation: drift 24s ease-in-out infinite alternate;
+}
+.ambient-one { top: 2%; right: 2%; background: #397fe0; }
+.ambient-two { top: 58%; left: -24rem; background: #2f91b8; animation-delay: -9s; }
+.ambient-three { top: 36%; right: 36%; width: 25rem; background: #2860ae; opacity: 0.1; animation-delay: -15s; }
+.particle-field {
+  position: absolute;
+  z-index: -1;
+  width: min(58vw, 760px);
+  aspect-ratio: 1;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image:
+    radial-gradient(circle, rgba(185, 220, 255, 0.75) 0.8px, transparent 1.4px),
+    radial-gradient(circle, rgba(123, 193, 255, 0.55) 0.7px, transparent 1.3px);
+  background-position: 0 0, 21px 17px;
+  background-size: 42px 42px, 67px 67px;
+  mask-image: radial-gradient(ellipse, #000 4%, transparent 69%);
+  animation: particle-drift 38s ease-in-out infinite alternate;
+}
+.particle-field-one { top: 4%; right: -17%; transform: perspective(900px) rotateX(18deg) rotateY(-20deg); }
+.particle-field-two { bottom: 3%; left: -24%; opacity: 0.14; animation-delay: -19s; transform: perspective(900px) rotateX(-16deg) rotateY(22deg); }
+.grain {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  opacity: 0.12;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.19'/%3E%3C/svg%3E");
+}
+.topbar {
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+.wordmark { display: inline-flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.17em; }
+.wordmark-glyph {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(176, 213, 255, 0.36);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(164, 206, 255, 0.24), rgba(70, 142, 232, 0.17));
+  color: #d7eaff;
+  font-size: 13px;
+  letter-spacing: 0;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.24), 0 0 22px rgba(117, 153, 255, 0.12);
+}
+.wordmark-separator { padding: 0 4px; color: #82a9d8; }
+.topbar-link { color: #b9bdcc; font-size: 12px; transition: color 180ms ease; }
+.interface-icon { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; transition: transform 180ms ease; }
+.topbar-link .interface-icon { margin-left: 8px; color: var(--cyan); }
+.topbar-link:hover { color: white; }
+.topbar-link:hover .interface-icon { transform: translate(2px, 2px); }
+
+.hero {
+  position: relative;
+  display: grid;
+  min-height: min(730px, calc(100svh - 92px));
+  grid-template-columns: 0.92fr 1.08fr;
+  align-items: center;
+  gap: 4vw;
+  padding: 54px 0 90px;
+}
+.hero-copy { position: relative; z-index: 1; max-width: 600px; padding-bottom: 12px; }
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 28px;
+  color: #b9bdcc;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.status-dot, .live-indicator i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94e7c3;
+  box-shadow: 0 0 13px rgba(116, 236, 181, 0.75);
+}
+h1 {
+  max-width: 650px;
+  margin: 0;
+  font-size: clamp(56px, 7.1vw, 104px);
+  font-weight: 560;
+  letter-spacing: -0.085em;
+  line-height: 0.94;
+}
+h1 span {
+  display: block;
+  background: linear-gradient(105deg, #e5f1ff 4%, #91bdff 48%, #a7e7ee 92%);
+  background-clip: text;
+  color: transparent;
+}
+.hero-description {
+  max-width: 405px;
+  margin: 28px 0 0;
+  color: #a3a7b6;
+  font-size: 15px;
+  line-height: 1.8;
+}
+.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 22px; margin-top: 33px; }
+.primary-link {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 20px;
+  padding: 0 17px;
+  border: 1px solid rgba(174, 210, 255, 0.33);
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(111, 168, 238, 0.2), rgba(73, 110, 161, 0.08));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.13), 0 8px 30px rgba(36, 73, 119, 0.2);
+  font-size: 12px;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+.primary-link:hover { transform: translateY(-2px); border-color: rgba(190, 219, 255, 0.68); background-color: rgba(104, 163, 232, 0.18); }
+.primary-link .interface-icon { color: var(--cyan); }
+.primary-link:hover .interface-icon { transform: translate(2px, -2px); }
+.release-note { color: #777c8e; font-size: 9px; letter-spacing: 0.13em; }
+.release-note i { display: inline-block; width: 3px; height: 3px; margin: 0 8px 2px; border-radius: 50%; background: #6e7180; }
+
+.visual-wrap { position: relative; min-width: 0; }
+.visual-card {
+  position: relative;
+  height: clamp(380px, 43vw, 570px);
+  overflow: hidden;
+  border: 1px solid rgba(222, 227, 255, 0.16);
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(69, 113, 176, 0.22), transparent 54%),
+    linear-gradient(145deg, rgba(27, 30, 46, 0.74), rgba(15, 17, 28, 0.53));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.11), 0 35px 100px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(22px);
+}
+.visual-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.45;
+  background-image: linear-gradient(rgba(203, 217, 255, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(203, 217, 255, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at center, black 5%, transparent 77%);
+}
+.visual-topline, .visual-caption { position: absolute; z-index: 2; right: 22px; left: 22px; display: flex; align-items: center; justify-content: space-between; }
+.visual-topline { top: 20px; color: #8c91a4; font-size: 9px; letter-spacing: 0.13em; }
+.live-indicator { display: flex; align-items: center; gap: 7px; color: #a8b8b4; font-size: 8px; letter-spacing: 0.14em; }
+.live-indicator i { width: 5px; height: 5px; }
+.prism-canvas { position: absolute; inset: 45px 0 67px; }
+.prism-canvas canvas { display: block; width: 100%; height: 100%; }
+.scene-fallback { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 14px; color: #aeb7ca; font-size: 12px; }
+.fallback-shape { width: 76px; aspect-ratio: 1; border: 1px solid #9de9ff; transform: rotate(45deg); box-shadow: 0 0 45px rgba(157, 233, 255, 0.23), inset 0 0 26px rgba(89, 156, 232, 0.24); }
+.visual-caption {
+  bottom: 0;
+  min-height: 68px;
+  justify-content: flex-start;
+  gap: 13px;
+  border-top: 1px solid rgba(226, 231, 255, 0.1);
+  background: rgba(14, 16, 26, 0.36);
+  backdrop-filter: blur(16px);
+}
+.caption-index { color: #798298; font-size: 9px; letter-spacing: 0.1em; }
+.visual-caption strong, .visual-caption div > span { display: block; }
+.visual-caption strong { font-size: 11px; font-weight: 550; }
+.visual-caption div > span { margin-top: 4px; color: #858b9d; font-size: 9px; }
+.caption-crosshair { margin-left: auto; color: #8da7c7; font-size: 18px; }
+.orbit-label { position: absolute; color: #a1a6b8; font-size: 8px; letter-spacing: 0.14em; }
+.orbit-label-one { top: 7%; right: -8%; transform: rotate(90deg) translateX(50%); transform-origin: right; }
+.orbit-label-two { bottom: 13%; left: -8%; transform: rotate(-90deg) translateX(-50%); transform-origin: left; }
+.hero-foot { position: absolute; right: 0; bottom: 28px; left: 0; display: flex; justify-content: space-between; color: #707587; font-size: 8px; letter-spacing: 0.14em; }
+.scroll-hint { display: inline-flex; align-items: center; gap: 7px; }
+.scroll-hint .interface-icon { color: #a8d7ff; }
+
+.stack-section { padding: 102px 0 112px; border-top: 1px solid var(--line); }
+.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 40px; margin-bottom: 34px; }
+.section-heading .eyebrow { margin-bottom: 16px; }
+.section-index { color: var(--cyan); }
+h2 { margin: 0; font-size: clamp(34px, 4.4vw, 58px); font-weight: 520; letter-spacing: -0.065em; }
+h2 span { color: #999fb5; }
+.section-intro { max-width: 330px; margin: 0 0 3px; color: #969aaa; font-size: 12px; line-height: 1.8; }
+.stack-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+.stack-card {
+  position: relative;
+  display: flex;
+  min-height: 170px;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 17px;
+  border: 1px solid rgba(226, 231, 255, 0.1);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(28, 31, 46, 0.68), rgba(18, 20, 30, 0.52));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(18px);
+  transition: transform 220ms ease, border-color 220ms ease, background 220ms ease;
+}
+.stack-card::after { position: absolute; inset: 0; background: radial-gradient(ellipse at 18% 100%, var(--glow), transparent 60%); content: ""; opacity: 0.4; pointer-events: none; transition: opacity 220ms ease; }
+.stack-card:hover { transform: translateY(-4px); border-color: rgba(219, 228, 255, 0.27); background-color: rgba(36, 40, 58, 0.68); }
+.stack-card:hover::after { opacity: 0.75; }
+.stack-card-top, .stack-card-bottom { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; }
+.stack-number { color: #777d90; font-size: 9px; letter-spacing: 0.1em; }
+.stack-arrow { width: 15px; height: 15px; fill: none; stroke: #8a90a4; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.4; transition: transform 180ms ease, stroke 180ms ease; }
+.stack-card:hover .stack-arrow { transform: translate(2px, -2px); stroke: #dbe9ff; }
+.stack-card-bottom { justify-content: flex-start; gap: 12px; }
+.stack-orb { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px var(--accent); }
+.stack-card h3 { margin: 0; font-size: 15px; font-weight: 560; letter-spacing: -0.02em; }
+.stack-card p { margin: 5px 0 0; color: #9297a8; font-size: 10px; }
+.stack-card-electric { --accent: #8bbaff; --glow: rgba(69, 132, 224, 0.24); }
+.stack-card-cyan { --accent: #8ee8f3; --glow: rgba(77, 196, 219, 0.2); }
+.stack-card-blue { --accent: #8faeff; --glow: rgba(92, 128, 226, 0.2); }
+.stack-card-teal { --accent: #81e1d2; --glow: rgba(65, 187, 164, 0.2); }
+.stack-card-green { --accent: #9ce9ae; --glow: rgba(87, 197, 118, 0.19); }
+.stack-card-silver { --accent: #d6dff4; --glow: rgba(158, 183, 229, 0.19); }
+
+.footer { display: flex; min-height: 90px; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); }
+.footer-wordmark { font-size: 9px; }
+.footer-wordmark .wordmark-glyph { width: 24px; height: 24px; border-radius: 8px; font-size: 10px; }
+.footer p { color: #a4a8b6; font-size: 11px; }
+.footer-note { color: #74798a; font-size: 8px; letter-spacing: 0.13em; }
+
+@keyframes drift {
+  0% { transform: translate3d(-3%, -2%, 0) scale(0.92); opacity: 0.1; }
+  50% { opacity: 0.18; }
+  100% { transform: translate3d(5%, 4%, 0) scale(1.08); opacity: 0.14; }
+}
+@keyframes particle-drift {
+  from { translate: 0 0; opacity: 0.12; }
+  to { translate: 22px -17px; opacity: 0.23; }
+}
+@media (max-width: 900px) {
+  .hero { min-height: auto; grid-template-columns: 1fr; gap: 44px; padding: 88px 0 85px; }
+  .hero-copy { max-width: 680px; }
+  .visual-wrap { width: min(100%, 700px); margin: 0 auto; }
+  .visual-card { height: clamp(390px, 68vw, 540px); }
+  .orbit-label-one { right: -5%; }
+  .orbit-label-two { left: -5%; }
+  .hero-foot { bottom: 25px; }
+}
+@media (max-width: 620px) {
+  .experience-shell { padding-right: 22px; padding-left: 22px; }
+  .topbar { height: 72px; }
+  .topbar-link { font-size: 10px; }
+  .hero { gap: 37px; padding-top: 70px; }
+  .eyebrow { margin-bottom: 22px; font-size: 9px; }
+  h1 { font-size: clamp(53px, 15vw, 78px); }
+  .hero-description { max-width: 340px; margin-top: 22px; font-size: 13px; }
+  .hero-actions { gap: 15px; margin-top: 26px; }
+  .release-note { font-size: 8px; }
+  .visual-card { height: 390px; border-radius: 17px; }
+  .visual-topline, .visual-caption { right: 16px; left: 16px; }
+  .orbit-label { display: none; }
+  .hero-foot { right: 0; bottom: 20px; left: 0; font-size: 7px; }
+  .hero-foot span:first-child { max-width: 175px; line-height: 1.6; }
+  .stack-section { padding: 72px 0 78px; }
+  .section-heading { align-items: flex-start; flex-direction: column; gap: 15px; margin-bottom: 24px; }
+  .section-intro { max-width: 370px; }
+  .stack-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .stack-card { min-height: 148px; padding: 13px; }
+  .stack-card h3 { font-size: 13px; }
+  .footer { min-height: 82px; flex-wrap: wrap; padding: 16px 0; }
+  .footer p { display: none; }
+  .footer-note { font-size: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+'@
+
+    $agents = @'
+# AGENTS.md
+
+## 0. Agent role
+Act as a senior frontend engineer. Read this file and the relevant source before making changes. Keep the starter easy to understand, accessible, and straightforward to remove.
+
+## 1. Project intent
+**Product:** A polished, removable technology showcase and starting canvas for a new Next.js application.
+**Audience:** Developers evaluating the stack or replacing the demo with their own product.
+**Core experience:** A responsive editorial hero, an interactive 3D prism, linked technology cards, and clear guidance for removing the demo.
+**Differentiator:** A restrained glass-and-light visual system with a pointer-reactive faceted model and scroll-aware motion.
+**Non-goals:** No accounts, database, API, persistence, analytics, content service, or application-specific product features.
+**Definition of done:** The app builds, the demo works on desktop and mobile, reduced-motion and unavailable-WebGL states remain usable, and the demo can be removed without disturbing the Next.js foundation.
+
+## 2. How to work
+1. Inspect the relevant app routes, components, styles, and package scripts before editing.
+2. Keep changes within the requested scope and preserve accessible semantics.
+3. Run the relevant lint, type, and production-build checks after changes.
+4. Report the files changed and checks run; state any check that could not run.
+
+## 3. Architecture and boundaries
+**Structure:** Single Next.js App Router application under `src/app`.
+**Server/client:** Keep the root layout and route as Server Components. Browser animation and WebGL belong only in `src/components/StarterExperience.tsx` and `src/components/PrismScene.tsx`.
+**Data:** No application data or secrets. Technology cards link to public documentation.
+**Third parties:** No service integrations. Do not add client-side secrets or remote data dependencies.
+
+## 4. Tech stack
+- Next.js App Router and React
+- TypeScript
+- Tailwind CSS v4, imported from `src/app/globals.css`
+- GSAP and ScrollTrigger for progressive entrance and card-reveal motion
+- Three.js for the responsive, pointer-reactive prism
+
+## 5. Key decisions
+- The dark glass visual treatment is the demo, not a required product design.
+- Keep all demo UI in `StarterExperience.tsx`, its styles in `globals.css`, and WebGL resources in `PrismScene.tsx`.
+- Respect `prefers-reduced-motion`; cap the WebGL pixel ratio and dispose all Three.js resources.
+- A failed WebGL initialization must leave an informative fallback, not a blank panel.
+- Preserve normal Next.js server rendering outside the isolated client components.
+
+## 6. Data model
+There is no stored or user-generated data. The technology-card list is static presentation content.
+
+## 7. Required checks
+- `npm run lint`
+- `npx tsc --noEmit`
+- `npm run build`
+- Manually check responsive layout, pointer interaction, card links, reduced motion, and demo-removal instructions.
+
+## 8. Constraints and gotchas
+- This starter targets Tailwind CSS v4; use its CSS-first `@import "tailwindcss"` setup.
+- Keep browser APIs, GSAP, and Three.js out of Server Components.
+- Clean up animation contexts, observers, event listeners, geometries, materials, and renderer resources.
+- Do not reintroduce the default Create Next App landing page or assets.
+
+## 9. When in doubt
+Keep the app server-first, the showcase removable, and the interaction lightweight. Avoid adding dependencies or features without a clear need.
+'@
+    Write-SlmnNextFile -Path $Path -RelativePath 'AGENTS.md' -Content $agents
+
+    foreach ($relativePath in @(
+        'README.md',
+        'src/app/favicon.ico',
+        'src/app/icon.svg',
+        'src/app/opengraph-image.png',
+        'public/file.svg',
+        'public/globe.svg',
+        'public/next.svg',
+        'public/vercel.svg',
+        'public/window.svg'
+    )) {
+        $assetPath = Join-Path $Path $relativePath
+        if (Test-Path -LiteralPath $assetPath -PathType Leaf) {
+            Remove-Item -LiteralPath $assetPath -Force
+        }
+    }
+}
+
+function slmn-next {
+    param(
+        [Parameter(Mandatory)][string]$name,
+        [Alias('Path')][string]$ProjectRoot
+    )
+
+    $projectsRoot = Get-SlmnProjectsPath -OverridePath $ProjectRoot
+    $projectName = ($name.Trim().ToLowerInvariant() -replace '[^a-z0-9._-]+', '-').Trim([char[]]'.-_')
+    if ([string]::IsNullOrWhiteSpace($projectName)) {
+        throw 'Project name must contain at least one letter or number.'
+    }
+
+    $path = Join-Path $projectsRoot $projectName
+    if (Test-Path -LiteralPath $path) {
+        throw "Project already exists: $path"
+    }
+
+    Set-Location $projectsRoot
+    if ($projectName -ne $name) {
+        Write-Host "Using project folder name: $projectName" -ForegroundColor DarkGray
+    }
+    Write-Host 'Creating the SLMN Next flagship with TypeScript, Tailwind CSS v4, GSAP, and Three.js.' -ForegroundColor Cyan
+    & npx --yes create-next-app@latest $projectName --typescript --tailwind --eslint --app --src-dir --use-npm --import-alias '@/*' --yes
+    if ($LASTEXITCODE -ne 0) {
+        throw "Next.js setup failed for '$name'."
+    }
+    if (-not (Test-ProjectDependency -Path $path -Name 'next') -or
+        -not (Test-ProjectDependency -Path $path -Name 'tailwindcss')) {
+        throw 'SLMN Next requires the Next.js App Router and Tailwind CSS packages, but the generated project is missing one or both.'
+    }
+
+    Push-Location $path
+    try {
+        Invoke-Npm install gsap three
+        Invoke-Npm install --save-dev 'tailwindcss@^4' '@tailwindcss/postcss'
+        Invoke-NpmDevInstall @types/three
+        Invoke-Npm pkg set 'scripts.dev=next dev --hostname localhost'
+        Write-SlmnNextProject -Path $path
+        Write-SlmnNextFile -Path $path -RelativePath 'postcss.config.mjs' -Content @'
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+'@
+    } finally {
+        Pop-Location
+    }
+
+    Set-Location $path
+    Open-ProjectEditor -Path $path -SkipAgentInstructions
     Start-SlmnDevServer -Path $path
 }
 

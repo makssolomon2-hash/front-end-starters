@@ -8,17 +8,29 @@
 
 # SLMN Frontend Starters
 
-PowerShell commands for creating clean frontend projects in your configured projects folder. Non-React starters provide a clean, connected root page plus a removable full-screen SLMN demo with linked technology cards and a pointer-reactive blue `S` signal. React and Next.js starters open with the removable screen. The layout uses a centered content frame with responsive outer padding. `slmn-app` remains the flagship React, GSAP, and Three.js version with the interactive 3D model.
+PowerShell commands for creating clean frontend projects in your configured projects folder. Non-React starters provide a clean, connected root page plus a removable full-screen SLMN demo with linked technology cards and a pointer-reactive blue `S` signal. React and Next.js starters open with the removable screen. The layout uses a centered content frame with responsive outer padding. `slmn-app` is the React flagship; `slmn-next` is its independently designed Next.js, GSAP, and Three.js counterpart.
 
 ## Current Release
 
 - A self-contained full-screen charcoal demo across Vanilla, Tailwind, GSAP, compatible interactive Vite templates, React, and Next.js App Router projects.
+- `slmn-next` adds a distinct dark-glass Next.js flagship with a pointer-reactive faceted prism, GSAP motion, and a reduced-motion fallback.
+- The persistent [Next design preview](./design-preview/README.md) lets you iterate on the flagship without generating a new project for every visual change.
 - Linked cards list only the project's installed technologies.
 - A responsive, pointer-reactive blue `S` panel replaces the flagship Three.js scene in starters that do not include Three.js.
 - Native CSS provides entrance motion by default. GSAP starters use GSAP for that reveal instead.
 - The full demo remains isolated in clearly named files so it can be removed without untangling application code.
 - Project destination, editor opening, and automatic dev-server startup are controlled through `~\.slmn\config.json`.
 
+## Next.js Design Preview
+
+Use the persistent [`design-preview/next`](./design-preview/next) app to tune the `slmn-next` screen in place:
+
+```powershell
+Set-Location .\design-preview\next
+npm run dev
+```
+
+The preview has its own dependencies and lockfile. After changing the template output in `Write-SlmnNextProject`, refresh its generated screen files using the steps in [design-preview/README.md](./design-preview/README.md).
 
 ## Easiest Way to Install
 
@@ -80,6 +92,7 @@ slmn-starter
 | Command | Stack | Initial project |
 | --- | --- | --- |
 | `slmn-app "my-app"` | Vite, React JavaScript, Tailwind CSS v4, GSAP, Three.js, React Icons | **Flagship:** creates a removable SLMN technology demo with no setup prompts |
+| `slmn-next "my-next-app"` | Next.js App Router, TypeScript, Tailwind CSS v4, GSAP, Three.js | **Next.js flagship:** creates a removable glass-and-prism demo, generates a project-specific `AGENTS.md`, and focuses it in VS Code |
 | `slmn-starter` | Starter menu | Choose a starter with arrows/Enter or a displayed shortcut |
 | `vanilla-project "my-site"` | HTML, CSS, JavaScript | Full-screen native HTML/CSS/JS screen with a pointer-reactive visual |
 | `tailwind-project "my-site"` | Vite, Tailwind CSS v4 | Full-screen Vite screen with Tailwind ready for application code |
@@ -328,6 +341,7 @@ react-tailwind-gsap-ts-project "typed-motion-app"
 react-tailwind-gsap-three-project "three-app"
 react-tailwind-gsap-three-ts-project "typed-three-app"
 slmn-app "my-app"
+slmn-next "my-next-app"
 slmn-ts-app "my-ts-app"
 vite-app "my-app"
 next-app "my-next-app"
@@ -347,6 +361,10 @@ Feature questions use uppercase `[Y/N]` prompts. Press `Y` or `N` once; no Enter
 For `vite-app`, choose the framework and variant in Vite's normal prompts. The launcher uses Vite's `--no-immediate` option, then installs your selected features and starts the server after setup. For `next-app` and `next-ts-app`, answer Create Next App's normal prompts; its package installation completes before the two feature questions appear.
 
 `slmn-app` is the JavaScript flagship and `slmn-ts-app` is its TypeScript counterpart. Both convert the entered project name to a lowercase npm-safe folder name, create the corresponding official Vite React template without framework, variant, package-name, or Create Vite installation questions, and install Tailwind CSS, GSAP, Three.js, and React Icons. The TypeScript version also installs `@types/three`. Each replaces Vite's default React page with a dark full-screen SLMN demo: linked technology cards on the left and a mouse-controlled WebGL model on the right. They then open VS Code, wait for the development server, and open the ready app in a browser when `autoStartDev` is enabled. `full-app` remains an alias for `slmn-app`.
+
+`slmn-next` creates a non-interactive Next.js App Router + TypeScript project, explicitly installs Tailwind CSS v4, GSAP, and Three.js, and replaces the default landing screen and stock assets. Its `npm run dev` script binds to `localhost`, preferring port 3000 and letting Next.js advance to 3001, 3002, and so on when needed. Automatic preview follows the same sequence and opens the actual chosen `localhost` URL; it does not select a random port. To run it yourself in VS Code, set `slmn-config autoStartDev false` before creating the project, then use `npm run dev` from the project folder. The Prism design pairs an editorial hero with a pointer-responsive faceted 3D object, fine orbital rings, soft ambient light, and glassy technology cards. GSAP and ScrollTrigger provide entrance and scroll reveals; reduced-motion preferences are respected, and the WebGL panel has a fallback. The project-specific `AGENTS.md` is generated before VS Code opens, then focused as the first file.
+
+For an existing `slmn-next` project, enable localhost binding and Next.js's normal port fallback with `npm pkg set 'scripts.dev=next dev --hostname localhost'`.
 
 ## Share With Others
 
@@ -373,6 +391,8 @@ Each technology card links to its official documentation and is rendered only wh
 **React, React + Tailwind, and React + Tailwind + GSAP:** replace `src/App.*`, then delete `src/components/Hero.*`, `src/components/TechPill.*`, `src/components/StarterVisual.*`, and `src/styles/demo.css`. `src/styles/app.css` only supplies the root minimum height and can be kept or deleted with the screen.
 
 **`slmn-app` and React + Tailwind + GSAP + Three.js:** replace `src/App.*`, then delete `src/components/Hero.*`, `src/components/TechPill.*`, `src/components/three/ThreeScene.*`, `src/styles/app.css`, and `src/styles/demo.css`. Uninstall `gsap`, `three`, and `react-icons` when those libraries are no longer needed.
+
+**`slmn-next`:** replace `src/app/page.tsx` with your app route, remove `src/components/StarterExperience.tsx` and `src/components/PrismScene.tsx`, then remove the demo-only rules from `src/app/globals.css`. Uninstall `gsap`, `three`, and `@types/three` if the project no longer uses them; keep Tailwind CSS v4 and its PostCSS plugin.
 
 **Next.js App Router:** replace `app/page.*` or `src/app/page.*`, then delete `components/SlmnStartScreen.*` or `src/components/SlmnStartScreen.*` and `app/slmn-start.css` or `src/app/slmn-start.css`.
 
@@ -402,6 +422,7 @@ The goal is a clean place to begin, not a sample app:
 - GSAP controls the screen entrance only in starters that install it; all other screen motion is native CSS and browser events.
 - React + Tailwind + GSAP + Three.js and `slmn-app` use the richer `src/components/three/ThreeScene.*` WebGL visual instead of `StarterVisual`.
 - Next.js App Router screens use `app/page.*` or `src/app/page.*`, the matching `components/SlmnStartScreen.*`, and `slmn-start.css` inside the App Router directory.
+- `slmn-next` keeps its demo in `src/components/StarterExperience.tsx`, its WebGL model in `src/components/PrismScene.tsx`, and its project-specific agent guidance in `AGENTS.md`.
 
 ## Troubleshooting
 
