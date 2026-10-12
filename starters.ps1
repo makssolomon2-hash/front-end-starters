@@ -8,6 +8,8 @@
 #
 #   slmn-app "my-app"
 #
+#   slmn-full "my-app"
+#
 #   vanilla-project "my-site"
 #   tailwind-project "tailwind-demo"
 #   gsap-project "gsap-hero"
@@ -134,37 +136,115 @@ function Remove-SlmnProfileEntry {
     return $true
 }
 
-function slmn-install {
-    if ([string]::IsNullOrWhiteSpace($script:SlmnSourcePath) -or -not (Test-Path -LiteralPath $script:SlmnSourcePath)) {
-        throw 'Run slmn-install from a loaded starters.ps1 file.'
-    }
+function Save-SlmnReleaseFile {
+    param(
+        [string]$FileName,
+        [string]$DestinationPath
+    )
 
-    $installDirectory = Get-SlmnInstallDirectory
-    $installedScriptPath = Join-Path $installDirectory 'starters.ps1'
-    $profilePath = Get-SlmnProfilePath
-    New-Item -ItemType Directory -Path $installDirectory -Force | Out-Null
-    $sourceScriptPath = (Resolve-Path -LiteralPath $script:SlmnSourcePath).Path
-    $currentInstalledPath = (Resolve-Path -LiteralPath $installedScriptPath -ErrorAction SilentlyContinue).Path
-    if ($sourceScriptPath -ne $currentInstalledPath) {
-        Copy-Item -LiteralPath $script:SlmnSourcePath -Destination $installedScriptPath -Force
-    }
-    $sourceHotkeysPath = Join-Path (Split-Path -Parent $script:SlmnSourcePath) 'slmn-hotkeys.ahk'
-    if (Test-Path -LiteralPath $sourceHotkeysPath) {
-        $installedHotkeysPath = Join-Path $installDirectory 'slmn-hotkeys.ahk'
-        if ((Resolve-Path -LiteralPath $sourceHotkeysPath).Path -ne (Resolve-Path -LiteralPath $installedHotkeysPath -ErrorAction SilentlyContinue).Path) {
-            Copy-Item -LiteralPath $sourceHotkeysPath -Destination $installedHotkeysPath -Force
+    $releaseUri = "https://raw.githubusercontent.com/makssolomon2-hash/front-end-starters/main/$FileName"
+    $isWindowsPowerShell = $PSVersionTable.PSVersion.Major -le 5
+    $originalSecurityProtocol = $null
+
+    try {
+        if ($isWindowsPowerShell) {
+            $originalSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        }
+
+        $response = Invoke-WebRequest -Uri $releaseUri -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+        if ($response.StatusCode -ne 200) {
+            throw "GitHub returned HTTP $($response.StatusCode)."
+        }
+        [System.IO.File]::WriteAllText($DestinationPath, $response.Content, [System.Text.UTF8Encoding]::new($true))
+    } catch {
+        throw "Unable to download SLMN release file '$FileName' from $releaseUri. $($_.Exception.Message)"
+    } finally {
+        if ($isWindowsPowerShell -and $null -ne $originalSecurityProtocol) {
+            [Net.ServicePointManager]::SecurityProtocol = $originalSecurityProtocol
         }
     }
-    Initialize-SlmnStorage | Out-Null
+}
 
+function Set-SlmnInstallationFiles {
+    param([string]$SourcePath)
+
+    $installDirectory = Get-SlmnInstallDirectory
+    New-Item -ItemType Directory -Path $installDirectory -Force | Out-Null
+
+    $stagingId = [Guid]::NewGuid().ToString('N')
+    $stagedScriptPath = Join-Path $installDirectory "starters.$stagingId.tmp"
+    $stagedHotkeysPath = Join-Path $installDirectory "slmn-hotkeys.$stagingId.tmp"
+    $installedScriptPath = Join-Path $installDirectory 'starters.ps1'
+    $installedHotkeysPath = Join-Path $installDirectory 'slmn-hotkeys.ahk'
+
+    try {
+        if ([string]::IsNullOrWhiteSpace($SourcePath)) {
+            Save-SlmnReleaseFile -FileName 'starters.ps1' -DestinationPath $stagedScriptPath
+            Save-SlmnReleaseFile -FileName 'slmn-hotkeys.ahk' -DestinationPath $stagedHotkeysPath
+        } else {
+            Copy-Item -LiteralPath $SourcePath -Destination $stagedScriptPath -Force -ErrorAction Stop
+            $sourceHotkeysPath = Join-Path (Split-Path -Parent $SourcePath) 'slmn-hotkeys.ahk'
+            if (Test-Path -LiteralPath $sourceHotkeysPath -PathType Leaf) {
+                Copy-Item -LiteralPath $sourceHotkeysPath -Destination $stagedHotkeysPath -Force -ErrorAction Stop
+            }
+        }
+
+        $tokens = $null
+        $parseErrors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile($stagedScriptPath, [ref]$tokens, [ref]$parseErrors) | Out-Null
+        if ($null -ne $parseErrors -and $parseErrors.Count -gt 0) {
+            throw "The downloaded starters.ps1 did not pass PowerShell syntax validation: $($parseErrors[0].Message)"
+        }
+
+        $scriptText = Get-Content -LiteralPath $stagedScriptPath -Raw
+        if ($scriptText -notmatch '(?im)^\s*function\s+slmn-starter\b' -or $scriptText -notmatch '(?im)^\s*function\s+slmn-update\b') {
+            throw 'The source file is not a valid SLMN Starters script.'
+        }
+
+        Move-Item -LiteralPath $stagedScriptPath -Destination $installedScriptPath -Force -ErrorAction Stop
+        if (Test-Path -LiteralPath $stagedHotkeysPath -PathType Leaf) {
+            Move-Item -LiteralPath $stagedHotkeysPath -Destination $installedHotkeysPath -Force -ErrorAction Stop
+        }
+    } finally {
+        Remove-Item -LiteralPath $stagedScriptPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stagedHotkeysPath -Force -ErrorAction SilentlyContinue
+    }
+
+    return $installedScriptPath
+}
+
+function Set-SlmnProfileLoader {
+    $profilePath = Get-SlmnProfilePath
     New-Item -ItemType Directory -Path (Split-Path -Parent $profilePath) -Force | Out-Null
     if (-not (Test-Path -LiteralPath $profilePath)) {
         New-Item -ItemType File -Path $profilePath -Force | Out-Null
     }
+
     Remove-SlmnProfileEntry -ProfilePath $profilePath | Out-Null
     Add-Content -LiteralPath $profilePath -Value '. "$env:USERPROFILE\.slmn\starters.ps1"'
+}
 
-    Write-Host 'SLMN installed. Open a new PowerShell terminal to use the commands everywhere.' -ForegroundColor Green
+function slmn-install {
+    $sourcePath = $script:SlmnSourcePath
+    if ([string]::IsNullOrWhiteSpace($sourcePath) -or -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        $sourcePath = $null
+    } else {
+        $sourcePath = (Resolve-Path -LiteralPath $sourcePath).Path
+        $profilePath = Get-SlmnProfilePath
+        $resolvedProfilePath = (Resolve-Path -LiteralPath $profilePath -ErrorAction SilentlyContinue).Path
+        if ($sourcePath -ieq $resolvedProfilePath) {
+            $sourcePath = $null
+        }
+    }
+
+    $installedScriptPath = Set-SlmnInstallationFiles -SourcePath $sourcePath
+    Initialize-SlmnStorage | Out-Null
+    Set-SlmnProfileLoader
+    $script:SlmnSourcePath = $installedScriptPath
+
+    Write-Host 'SLMN installed. The profile now loads the managed copy from ~/.slmn.' -ForegroundColor Green
+    Write-Host 'Open a new PowerShell terminal to use the installed commands everywhere.' -ForegroundColor Green
 }
 
 function slmn-uninstall {
@@ -177,26 +257,28 @@ function slmn-uninstall {
 }
 
 function slmn-update {
-    param([string]$SourcePath = $script:SlmnSourcePath)
+    param([string]$SourcePath)
 
-    if ([string]::IsNullOrWhiteSpace($SourcePath) -or -not (Test-Path -LiteralPath $SourcePath)) {
-        throw 'Provide a valid starters.ps1 file with: slmn-update -SourcePath "C:\path\to\starters.ps1"'
+    if ($PSBoundParameters.ContainsKey('SourcePath')) {
+        if ([string]::IsNullOrWhiteSpace($SourcePath) -or -not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+            throw 'Provide a valid starters.ps1 file with: slmn-update -SourcePath "C:\path\to\starters.ps1"'
+        }
+        $SourcePath = (Resolve-Path -LiteralPath $SourcePath).Path
+    } else {
+        $SourcePath = $null
     }
 
-    $installedScriptPath = Join-Path (Get-SlmnInstallDirectory) 'starters.ps1'
-    if ((Resolve-Path -LiteralPath $SourcePath).Path -eq (Resolve-Path -LiteralPath $installedScriptPath -ErrorAction SilentlyContinue).Path) {
-        Write-Host 'The installed SLMN script is already the loaded copy. Load a newer starters.ps1, then run slmn-update.' -ForegroundColor Yellow
-        return
-    }
-
-    New-Item -ItemType Directory -Path (Get-SlmnInstallDirectory) -Force | Out-Null
-    Copy-Item -LiteralPath $SourcePath -Destination $installedScriptPath -Force
-    $sourceHotkeysPath = Join-Path (Split-Path -Parent $SourcePath) 'slmn-hotkeys.ahk'
-    if (Test-Path -LiteralPath $sourceHotkeysPath) {
-        Copy-Item -LiteralPath $sourceHotkeysPath -Destination (Join-Path (Get-SlmnInstallDirectory) 'slmn-hotkeys.ahk') -Force
-    }
+    $installedScriptPath = Set-SlmnInstallationFiles -SourcePath $SourcePath
     Initialize-SlmnStorage | Out-Null
-    Write-Host 'SLMN updated. Open a new PowerShell terminal to load the updated commands.' -ForegroundColor Green
+    Set-SlmnProfileLoader
+    $script:SlmnSourcePath = $installedScriptPath
+
+    if ([string]::IsNullOrWhiteSpace($SourcePath)) {
+        Write-Host 'SLMN updated from the official GitHub main branch.' -ForegroundColor Green
+    } else {
+        Write-Host "SLMN updated from '$SourcePath'." -ForegroundColor Green
+    }
+    Write-Host 'Open a new PowerShell terminal to load the updated commands.' -ForegroundColor Green
 }
 
 function Get-SlmnHotkeysPath {
@@ -343,6 +425,7 @@ function Get-SlmnTechnologyInfo {
         'Vite' = @{ Detail = 'Build tooling'; Href = 'https://vite.dev/' }
         'React' = @{ Detail = 'UI library'; Href = 'https://react.dev/' }
         'Next.js' = @{ Detail = 'React framework'; Href = 'https://nextjs.org/' }
+        'Next.js Docs' = @{ Detail = 'Official documentation'; Href = 'https://nextjs.org/docs' }
         'Tailwind CSS' = @{ Detail = 'Utility styling'; Href = 'https://tailwindcss.com/' }
         'GSAP' = @{ Detail = 'Motion library'; Href = 'https://gsap.com/' }
         'Three.js' = @{ Detail = '3D library'; Href = 'https://threejs.org/' }
@@ -961,10 +1044,15 @@ The resulting file should feel dense, decisive, and production-ready.
 }
 
 function Open-ProjectEditor {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [switch]$SkipAgentInstructions
+    )
 
     Write-SlmnSuccess "Project created: $Path"
-    Write-ProjectAgentInstructions -Path $Path
+    if (-not $SkipAgentInstructions) {
+        Write-ProjectAgentInstructions -Path $Path
+    }
 
     if (-not (Get-SlmnConfiguration).openInVSCode) {
         Write-Host 'VS Code opening is disabled in SLMN configuration.' -ForegroundColor DarkGray
@@ -1277,6 +1365,8 @@ function Confirm-Feature {
 }
 
 function Select-StarterCommand {
+    param([string]$InitialCommand)
+
     $options = @(
         @{ Group = 'CORE'; Label = 'Vanilla'; Shortcut = '1 / V'; Keys = @('1', 'v'); Badges = @(@{ Text = 'HTML'; Color = 'DarkYellow' }, @{ Text = 'CSS'; Color = 'Blue' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'vanilla-project' },
         @{ Group = 'CORE'; Label = 'Tailwind CSS'; Shortcut = '2 / T'; Keys = @('2', 't'); Badges = @(@{ Text = 'TW'; Color = 'Cyan' }); Command = 'tailwind-project' },
@@ -1290,12 +1380,21 @@ function Select-StarterCommand {
         @{ Group = 'REACT / TYPESCRIPT'; Label = 'React + Tailwind CSS + GSAP'; Shortcut = 'RTGTS'; Keys = @('rtgts'); Badges = @(@{ Text = 'R'; Color = 'Blue' }, @{ Text = 'TS'; Color = 'Cyan' }, @{ Text = 'TW'; Color = 'Cyan' }, @{ Text = 'GS'; Color = 'Green' }); Command = 'react-tailwind-gsap-ts-project' },
         @{ Group = 'REACT / TYPESCRIPT'; Label = 'React + Tailwind + GSAP + Three.js'; Shortcut = '3DTS'; Keys = @('3dts'); Badges = @(@{ Text = 'R'; Color = 'Blue' }, @{ Text = 'TS'; Color = 'Cyan' }, @{ Text = '3D'; Color = 'Magenta' }); Command = 'react-tailwind-gsap-three-ts-project' },
         @{ Group = 'REACT / TYPESCRIPT'; Label = 'SLMN App (flagship)'; Shortcut = 'ATS'; Keys = @('ats'); Badges = @(@{ Text = 'S'; Color = 'Cyan' }, @{ Text = 'TS'; Color = 'Cyan' }); Command = 'slmn-ts-app' },
+        @{ Group = 'FULL-STACK'; Label = 'SLMN Full (Full-stack)'; Shortcut = 'FTS'; Keys = @('fts'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'TS'; Color = 'Cyan' }, @{ Text = 'DB'; Color = 'Green' }, @{ Text = 'AI'; Color = 'Magenta' }); Command = 'slmn-full' },
         @{ Group = 'FRAMEWORKS'; Label = 'SLMN App (JavaScript)'; Shortcut = '8 / A'; Keys = @('8', 'a'); Badges = @(@{ Text = 'S'; Color = 'Cyan' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'slmn-app' },
         @{ Group = 'FRAMEWORKS'; Label = 'Vite (choose framework and variant)'; Shortcut = '9 / VITE'; Keys = @('9', 'vite'); Badges = @(@{ Text = 'V'; Color = 'Magenta' }); Command = 'vite-app' },
         @{ Group = 'FRAMEWORKS'; Label = 'Next.js (TypeScript)'; Shortcut = 'NTS'; Keys = @('nts'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'TS'; Color = 'Cyan' }); Command = 'next-ts-app' },
         @{ Group = 'FRAMEWORKS'; Label = 'Next.js'; Shortcut = '0 / NEXT'; Keys = @('0', 'next'); Badges = @(@{ Text = 'N'; Color = 'White' }, @{ Text = 'JS'; Color = 'Yellow' }); Command = 'next-app' }
     )
     $selectedIndex = 0
+    if (-not [string]::IsNullOrWhiteSpace($InitialCommand)) {
+        for ($index = 0; $index -lt $options.Count; $index++) {
+            if ($options[$index].Command -eq $InitialCommand) {
+                $selectedIndex = $index
+                break
+            }
+        }
+    }
     $shortcutBuffer = ''
     $animateBanner = $true
 
@@ -1370,6 +1469,41 @@ function Select-StarterCommand {
                 }
                 if ($exactMatch.Count -eq 1 -and -not [Console]::KeyAvailable) {
                     return $exactMatch[0].Command
+                }
+            }
+        }
+    }
+}
+
+function Read-SlmnProjectName {
+    $name = New-Object System.Text.StringBuilder
+    Write-Host '  Project name (Escape or Left Arrow returns to the starter menu): ' -NoNewline -ForegroundColor Cyan
+
+    while ($true) {
+        $keyInfo = [Console]::ReadKey($true)
+        switch ($keyInfo.Key) {
+            'Enter' {
+                Write-Host ''
+                return $name.ToString()
+            }
+            'Escape' {
+                Write-Host ''
+                return $null
+            }
+            'LeftArrow' {
+                Write-Host ''
+                return $null
+            }
+            'Backspace' {
+                if ($name.Length -gt 0) {
+                    $name.Remove($name.Length - 1, 1) | Out-Null
+                    Write-Host "`b `b" -NoNewline
+                }
+            }
+            default {
+                if (-not [char]::IsControl($keyInfo.KeyChar)) {
+                    [void]$name.Append($keyInfo.KeyChar)
+                    Write-Host $keyInfo.KeyChar -NoNewline
                 }
             }
         }
@@ -2325,7 +2459,7 @@ function Set-NextStarterScreen {
     $componentExtension = if ($pagePath.EndsWith('.tsx')) { 'tsx' } else { 'jsx' }
     $componentsDirectory = Join-Path (Split-Path -Parent $appDirectory) 'components'
     New-Item -ItemType Directory -Path $componentsDirectory -Force | Out-Null
-    $technologies = @('Next.js', 'React', $(if ($componentExtension -eq 'tsx') { 'TypeScript' } else { 'JavaScript' }))
+    $technologies = @('Next.js', 'Next.js Docs', 'React', $(if ($componentExtension -eq 'tsx') { 'TypeScript' } else { 'JavaScript' }))
     if ($IncludeTailwind) {
         $technologies += 'Tailwind CSS'
     }
@@ -2452,23 +2586,24 @@ body {
 
     @'
 .slmn-next-shell {
+    --slmn-next-shell-padding-y: clamp(1rem, 4vh, 2rem);
     display: grid;
     width: 100%;
-    min-height: 100svh;
-    padding: 20px;
+    min-height: 100dvh;
+    padding: var(--slmn-next-shell-padding-y) 20px;
     color: #ffffff;
     text-align: left;
     background-color: #171717;
     background-image: linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
     background-size: 3rem 3rem;
-    place-items: center;
+    place-items: safe center;
 }
 
 .slmn-next-screen {
     display: grid;
     width: 100%;
     max-width: 72rem;
-    min-height: min(30rem, calc(100svh - 40px));
+    min-height: min(30rem, calc(100dvh - var(--slmn-next-shell-padding-y) - var(--slmn-next-shell-padding-y)));
     padding: 0;
     margin: 0 auto;
     align-items: center;
@@ -3459,23 +3594,31 @@ function full-app {
 function slmn-starter {
     param([Alias('Path')][string]$ProjectRoot)
 
-    $command = Select-StarterCommand
-    if ([string]::IsNullOrWhiteSpace($command)) {
-        Write-Host 'Starter selection cancelled.' -ForegroundColor DarkGray
+    $initialCommand = $null
+    while ($true) {
+        $command = Select-StarterCommand -InitialCommand $initialCommand
+        if ([string]::IsNullOrWhiteSpace($command)) {
+            Write-Host 'Starter selection cancelled.' -ForegroundColor DarkGray
+            return
+        }
+
+        Clear-Host
+        Show-SlmnBanner
+        Write-SlmnStatus "Selected $command"
+        $name = Read-SlmnProjectName
+        if ($null -eq $name) {
+            Write-Host 'Returning to the starter selection...' -ForegroundColor DarkGray
+            $initialCommand = $command
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace($name)) {
+            throw 'A project name is required.'
+        }
+
+        Write-SlmnStatus "Creating '$($name.Trim())'..."
+        & $command $name.Trim() -Path $ProjectRoot
         return
     }
-
-    Clear-Host
-    Show-SlmnBanner
-    Write-SlmnStatus "Selected $command"
-    Write-Host '  Project name: ' -NoNewline -ForegroundColor Cyan
-    $name = Read-Host
-    if ([string]::IsNullOrWhiteSpace($name)) {
-        throw 'A project name is required.'
-    }
-
-    Write-SlmnStatus "Creating '$($name.Trim())'..."
-    & $command $name.Trim() -Path $ProjectRoot
 }
 
 # -----------------------------

@@ -22,13 +22,39 @@ PowerShell commands for creating clean frontend projects in your configured proj
 
 ## Easiest Way to Install
 
-Open Windows Terminal, then press `Win + X` and select `I` or `A`. Run:
+No need to paste the script into Notepad or edit `$PROFILE` by hand. If you already downloaded or cloned the repository, open PowerShell in its folder and run:
 
 ```powershell
-notepad $PROFILE
+. .\starters.ps1
+slmn-install
 ```
 
-Paste the complete contents of `starters.ps1` into the profile file, then save it.
+To install directly from GitHub without keeping a checkout, paste this once into PowerShell:
+
+```powershell
+$bootstrapDirectory = Join-Path $env:TEMP ("slmn-bootstrap-" + [guid]::NewGuid().ToString('N'))
+$originalSecurityProtocol = $null
+if ($PSVersionTable.PSVersion.Major -le 5) {
+  $originalSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+}
+try {
+  New-Item -ItemType Directory -Path $bootstrapDirectory -Force | Out-Null
+  Invoke-WebRequest -Uri "https://raw.githubusercontent.com/makssolomon2-hash/front-end-starters/main/starters.ps1" -OutFile (Join-Path $bootstrapDirectory "starters.ps1") -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+  Invoke-WebRequest -Uri "https://raw.githubusercontent.com/makssolomon2-hash/front-end-starters/main/slmn-hotkeys.ahk" -OutFile (Join-Path $bootstrapDirectory "slmn-hotkeys.ahk") -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+  . (Join-Path $bootstrapDirectory "starters.ps1")
+  slmn-install
+} finally {
+  if ($null -ne $originalSecurityProtocol) {
+    [Net.ServicePointManager]::SecurityProtocol = $originalSecurityProtocol
+  }
+  if (Test-Path -LiteralPath $bootstrapDirectory) {
+    Remove-Item -LiteralPath $bootstrapDirectory -Recurse -Force
+  }
+}
+```
+
+The installer keeps the script in `~\.slmn\starters.ps1` and adds a loader line to your PowerShell profile. It preserves existing profile content. If you previously pasted the whole script into your profile, this setup adds the managed loader after it; the managed version then takes precedence in new terminals.
 
 Restart Windows Terminal, then run:
 
@@ -47,7 +73,7 @@ Open PowerShell in the folder containing `starters.ps1`, then run:
 slmn-starter
 ```
 
-`slmn-starter` opens the colorized menu. Use the Up and Down arrow keys and Enter, or type the displayed shortcut, then enter a project name. Press Esc to cancel.
+`slmn-starter` opens the colorized menu. Use the Up and Down arrow keys and Enter, or type the displayed shortcut, then enter a project name. Press Esc in the menu to cancel; at the project-name prompt, press Escape or Left Arrow to return to the menu with your last choice selected.
 
 ## What Is Included
 
@@ -121,47 +147,21 @@ The last command must return `True`. Then load the functions into the current Po
 
 The leading `.` is important: it dot-sources the script, making the starter commands available in the current terminal. See **Installation Recovery** when Windows blocks a downloaded script or your shell blocks local scripts.
 
-### Fastest Manual Install: `$PROFILE`
-
-From the repository folder, paste this complete block into PowerShell once. It creates your **Current User, All Hosts** profile when needed and adds the current checkout as a single loader line:
-
-```powershell
-$profilePath = $PROFILE.CurrentUserAllHosts
-New-Item -ItemType Directory -Path (Split-Path -Parent $profilePath) -Force | Out-Null
-New-Item -ItemType File -Path $profilePath -Force | Out-Null
-$startersPath = (Resolve-Path .\starters.ps1).Path
-$loader = ". `"$startersPath`""
-if (-not (Select-String -LiteralPath $profilePath -SimpleMatch $loader -Quiet)) {
-  Add-Content -LiteralPath $profilePath -Value $loader
-}
-```
-
-Close and reopen PowerShell, then verify the command is available:
-
-```powershell
-Get-Command slmn-starter
-```
-
-`$PROFILE` points to PowerShell profile scripts. This uses the All Hosts profile because it loads in normal PowerShell, Windows Terminal, and VS Code terminals. Keep this repository in a location you will not move; after pulling updates, opening a new terminal loads the updated script automatically.
-
-The profile contains only the loader line, not a copied `starters.ps1`. Keeping the script in the repository makes updates and hotkey installation work normally.
-
 ### Managed Install: `~\.slmn`
 
-When you want a self-contained installation that continues to work after you move or remove the checkout, run:
-
-```powershell
-. .\starters.ps1
-slmn-install
-```
-
-`slmn-install` copies the tool to `~\.slmn\starters.ps1`, creates `~\.slmn\config.json`, and replaces any existing SLMN loader with this one clean All Hosts profile line:
+`slmn-install` copies the script to `~\.slmn\starters.ps1`, creates `~\.slmn\config.json`, and connects it to the **Current User, All Hosts** PowerShell profile with this loader:
 
 ```powershell
 . "$env:USERPROFILE\.slmn\starters.ps1"
 ```
 
-To update the managed copy after getting a newer repository version, load that newer `starters.ps1` and run `slmn-update`. Updates affect projects created after the update; a project already generated keeps its own files and does not change automatically. To remove the managed profile loader while retaining `~\.slmn` and its configuration, run `slmn-uninstall`.
+To update, open a new PowerShell terminal and run:
+
+```powershell
+slmn-update
+```
+
+`slmn-update` downloads the latest `starters.ps1` and `slmn-hotkeys.ahk` from the official GitHub `main` branch, validates the PowerShell syntax before installing, and ensures the profile loads the managed copy. Restart the terminal after the update to load the new functions. To update from a local checkout instead, run `slmn-update -SourcePath .\starters.ps1` from that folder. Existing projects are not changed by tool updates. To remove the profile loader while keeping `~\.slmn` and its configuration, run `slmn-uninstall`.
 
 ### Installation Recovery
 
@@ -332,7 +332,7 @@ next-app "my-next-app"
 next-ts-app "my-next-ts-app"
 ```
 
-`slmn-starter` presents grouped JavaScript and TypeScript options in an animated terminal menu with colored tool badges: JavaScript yellow, TypeScript cyan/blue, React blue, Next.js white, Tailwind cyan, and GSAP green. A rotating spinner appears while the preview becomes ready. Use the Up and Down arrow keys and Enter, or type the displayed shortcut; Esc cancels. Choosing `SLMN App` or its TypeScript counterpart creates the full project without further setup questions. Their project names are converted to lowercase npm-safe folder names, so `APPP` becomes `appp`. Choosing Vite opens its normal framework and variant selector next.
+`slmn-starter` presents grouped JavaScript and TypeScript options in an animated terminal menu with colored tool badges: JavaScript yellow, TypeScript cyan/blue, React blue, Next.js white, Tailwind cyan, and GSAP green. A rotating spinner appears while the preview becomes ready. Use the Up and Down arrow keys and Enter, or type the displayed shortcut; Esc cancels the menu. If you chose the wrong starter, Escape or Left Arrow at the project-name prompt returns to the menu and keeps that starter highlighted. Choosing `SLMN App` or its TypeScript counterpart creates the full project without further setup questions. Their project names are converted to lowercase npm-safe folder names, so `APPP` becomes `appp`. Choosing Vite opens its normal framework and variant selector next.
 
 Projects are created at the configured `projectsPath` (Desktop by default), or at a command's temporary `-Path` override. Starters open the finished project in VS Code, start their preview, wait for localhost to respond, and then open the app in your default browser. Framework dev servers keep running in the PowerShell session; `autoStartDev` controls both automatic server startup and browser preview.
 
